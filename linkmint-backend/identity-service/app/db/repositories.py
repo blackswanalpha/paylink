@@ -8,10 +8,11 @@ same surface.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
@@ -24,6 +25,15 @@ from app.db.models import (
     SessionRow,
     UserRow,
 )
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE wildcards so user input matches literally (escape char = backslash).
+
+    Without this a ``q`` of ``%``/``_`` is a live wildcard — ``%`` would match every row and force
+    an unindexed full scan. The escaped pattern is paired with ``.ilike(..., escape="\\")``.
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class IdentityRepository:
@@ -46,6 +56,20 @@ class IdentityRepository:
     async def get_user_by_phone(self, phone: str) -> UserRow | None:
         stmt = select(UserRow).where(UserRow.phone == phone)
         return (await self._session.execute(stmt)).scalar_one_or_none()
+
+    async def search_users(self, q: str, limit: int = 20) -> list[UserRow]:
+        """Admin lookup: match an email/phone substring or an exact user_id (internal-only)."""
+        like = f"%{_escape_like(q)}%"
+        conditions: list[ColumnElement[bool]] = [
+            UserRow.email.ilike(like, escape="\\"),
+            UserRow.phone.ilike(like, escape="\\"),
+        ]
+        with contextlib.suppress(ValueError):  # q not a UUID → substring match only
+            conditions.append(UserRow.user_id == uuid.UUID(q))
+        stmt = (
+            select(UserRow).where(or_(*conditions)).order_by(UserRow.created_at.desc()).limit(limit)
+        )
+        return list((await self._session.execute(stmt)).scalars().all())
 
     # ── oauth identities ──
     async def get_oauth_identity(self, provider: str, subject: str) -> OAuthIdentityRow | None:

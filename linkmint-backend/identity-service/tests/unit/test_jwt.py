@@ -36,6 +36,33 @@ def test_issue_verify_roundtrip() -> None:
     assert "payer" in claims.user_roles
 
 
+def test_mfa_and_org_type_claims_roundtrip() -> None:
+    _, issuer, verifier = _issuer_verifier()
+    token, _ = issuer.issue_access(
+        user_id="u1",
+        roles=[OrgRole("o1", "admin", type="admin")],
+        user_roles=["payer"],
+        kyc_tier=0,
+        sid="s1",
+        mfa=True,
+    )
+    claims = verifier.verify(token)
+    assert claims.mfa is True
+    assert "mfa" in claims.amr and "pwd" in claims.amr
+    assert claims.roles[0].type == "admin"
+
+
+def test_mfa_defaults_false_without_step_up() -> None:
+    _, issuer, verifier = _issuer_verifier()
+    token, _ = issuer.issue_access(
+        user_id="u", roles=[OrgRole("o1", "owner")], user_roles=[], kyc_tier=0
+    )
+    claims = verifier.verify(token)
+    assert claims.mfa is False
+    assert claims.amr == ["pwd"]
+    assert claims.roles[0].type is None  # org type absent → None (backward compatible)
+
+
 def test_expired_token_raises() -> None:
     _, issuer, verifier = _issuer_verifier()
     token, _ = issuer.issue_access(

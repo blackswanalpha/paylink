@@ -61,6 +61,15 @@ func (s *Server) routes() http.Handler {
 		r.Get("/payments/{id}", s.getPayment)
 	})
 
+	// Internal admin read surface (admin-backoffice, work11). Like /internal/healthz it sits
+	// outside /v1 and carries no JWT — the gateway/transport authorizes the caller. The {id}
+	// drill-down reuses getPayment, so it reconciles against on-chain truth (read-through, like the
+	// public GET); the list/search path is a cheap projection read with no reconcile.
+	r.Route("/internal/admin", func(r chi.Router) {
+		r.Get("/payments/{id}", s.getPayment)
+		r.Get("/payments", s.adminSearchPayments)
+	})
+
 	return r
 }
 

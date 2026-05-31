@@ -96,6 +96,32 @@ func (s *Store) GetPaymentByPayLink(ctx context.Context, paylinkID string) (doma
 	return p, err
 }
 
+// SearchPayments returns payments whose id or paylink_id equals q, or whose status equals q
+// (case-insensitive), most recent first. This is the read-only admin lookup (admin-backoffice,
+// work11); it does not reconcile against the chain.
+func (s *Store) SearchPayments(ctx context.Context, q string, limit int) ([]domain.Payment, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+selectColumns+` FROM payment.payments
+		 WHERE id::text=$1 OR paylink_id=$1 OR status=upper($1)
+		 ORDER BY created_at DESC LIMIT $2`, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]domain.Payment, 0, limit)
+	for rows.Next() {
+		p, err := scanPayment(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // ApplyChainEvent advances the payment atomically and idempotently. The (paylink_id, seq) insert
 // dedupes redelivered events; the FOR UPDATE lock serializes concurrent applies.
 func (s *Store) ApplyChainEvent(ctx context.Context, ev domain.ChainEventRef, project domain.ProjectFn) (domain.Payment, bool, error) {

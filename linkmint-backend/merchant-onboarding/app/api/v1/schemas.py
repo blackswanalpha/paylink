@@ -54,6 +54,21 @@ class MerchantResponse(BaseModel):
     bank_accounts: list[BankAccountSummary]
 
 
+# ── internal admin (read-only; consumed by admin-backoffice over the trusted internal surface) ──
+class AdminMerchantSummary(BaseModel):
+    merchant_id: str
+    org_id: str
+    business_name: str
+    country: str
+    type: str
+    status: str
+    fee_tier: str
+
+
+class AdminMerchantListResponse(BaseModel):
+    items: list[AdminMerchantSummary]
+
+
 # ── documents ──
 class DocumentResponse(BaseModel):
     document_id: str

@@ -208,6 +208,60 @@ func TestGetNotFound(t *testing.T) {
 	}
 }
 
+func TestAdminGetPayment(t *testing.T) {
+	srv, store := build(t, payableStub(), stubChain{})
+	if err := store.CreatePayment(context.Background(), domain.Payment{
+		ID: "pay-x", PayLinkID: plID, Rail: "mpesa", Status: lifecycle.StateAwaitingPayment,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rr, out := do(srv, http.MethodGet, "/internal/admin/payments/pay-x", "", nil)
+	if rr.Code != http.StatusOK || out["id"] != "pay-x" {
+		t.Fatalf("admin get: status=%d body=%v", rr.Code, out)
+	}
+}
+
+func TestAdminGetPaymentNotFound(t *testing.T) {
+	srv, _ := build(t, payableStub(), stubChain{})
+	rr, out := do(srv, http.MethodGet, "/internal/admin/payments/missing", "", nil)
+	if rr.Code != http.StatusNotFound || errCode(out) != "PAYMENT_NOT_FOUND" {
+		t.Fatalf("status=%d code=%s", rr.Code, errCode(out))
+	}
+}
+
+func TestAdminSearchPayments(t *testing.T) {
+	srv, store := build(t, payableStub(), stubChain{})
+	ctx := context.Background()
+	for _, p := range []domain.Payment{
+		{ID: "pay-1", PayLinkID: "0xaaa", Rail: "mpesa", Status: lifecycle.StateAwaitingPayment, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
+		{ID: "pay-2", PayLinkID: "0xbbb", Rail: "card", Status: lifecycle.StateSettled, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
+	} {
+		if err := store.CreatePayment(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rr, out := do(srv, http.MethodGet, "/internal/admin/payments?q=pay-1", "", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%v", rr.Code, out)
+	}
+	items, _ := out["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("want 1 item, got %d (%v)", len(items), out)
+	}
+	if first, _ := items[0].(map[string]any); first["id"] != "pay-1" {
+		t.Fatalf("want pay-1, got %v", items[0])
+	}
+}
+
+func TestAdminSearchPaymentsMissingQuery(t *testing.T) {
+	srv, _ := build(t, payableStub(), stubChain{})
+	rr, out := do(srv, http.MethodGet, "/internal/admin/payments", "", nil)
+	if rr.Code != http.StatusBadRequest || errCode(out) != "INVALID_PAYLOAD" {
+		t.Fatalf("status=%d code=%s", rr.Code, errCode(out))
+	}
+}
+
 func TestHealthAndReady(t *testing.T) {
 	srv, _ := build(t, payableStub(), stubChain{})
 	if rr, _ := do(srv, http.MethodGet, "/internal/healthz", "", nil); rr.Code != http.StatusOK {

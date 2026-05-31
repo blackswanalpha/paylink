@@ -24,7 +24,7 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 09 | [work09](work/work09.md) / [flow09](flow/flow09.md) | 2.2 Identity service | Python/FastAPI | 15,16,17 | done |
 | 01 | [work01](work/work01.md) / [flow01](flow/flow01.md) | 2.5 PayLink service | Python/FastAPI | 15,16 | done |
 | 10 | [work10](work/work10.md) / [flow10](flow/flow10.md) | 2.3 Merchant onboarding | Python/FastAPI | 09 | done |
-| 11 | [work11](work/work11.md) / [flow11](flow/flow11.md) | 2.4 Admin backoffice (read-only) | Python/FastAPI | 09 | todo |
+| 11 | [work11](work/work11.md) / [flow11](flow/flow11.md) | 2.4 Admin backoffice (read-only) | Python/FastAPI | 09 | done |
 | 05 | [work05](work/work05.md) / [flow05](flow/flow05.md) | 2.1 API gateway | Kong (ADR-008) | 09,01 | done |
 | 02 | [work02](work/work02.md) / [flow02](flow/flow02.md) | 2.10 Payment orchestrator | Go/chi | 01,04,14 | done |
 | 03 | [work03](work/work03.md) / [flow03](flow/flow03.md) | 2.11 Proof validator | Go/chi | 02 | done |
@@ -412,3 +412,35 @@ never expands the active item ([scope.md](scope.md)).
   adapters (micro-deposit/MPesa B2B name-match) + per-rail `account_details` validation; S3
   object-store backend; streaming upload size-guard (gateway caps body today); work21 fee-pricing
   consumes the `fee_tier`.
+- 2026-06-01 — work11 → **done**. `linkmint-backend/admin-backoffice` shipped (Python 3.12 /
+  FastAPI), the read-only internal ops console (Phase 1, spec §2.18). `GET /v1/admin/search?q=`
+  (unified search across users/merchants/PayLinks/payments) + `GET /v1/admin/{users,merchants,
+  paylinks,payments}/{id}` drill-down views. **AuthZ:** verifier-only RS256 JWT (alg-confusion
+  guard) gated on **admin role + MFA + a default-deny scope** (`require_admin("support.read")`);
+  the staff→scope map is owned locally in `admin.staff` (∪ `ADMIN_DEV_STAFF_GRANTS` for dev) — scopes
+  are NEVER read from the token. **Audit by construction:** the search/entity services are the only
+  call sites and each emits one structured `audit` line (the **work13 drop-in** via `AuditSink`).
+  **Read-through aggregation:** every entity is fetched over HTTP from its owning service's
+  `/internal/admin` endpoint (no cross-schema DB reads); the search fan-out runs each provider under
+  a timeout and **degrades gracefully** (one upstream down ⇒ `degraded:[...]`, still 200). Owns a
+  thin `admin` schema (`staff` Phase-1 + Phase-2 `feature_flags`/`announcements`; numbered Alembic;
+  no cross-schema FK — `staff.sub` opaque). **Upstream additions (this work item):** identity-service
+  now emits `mfa`/`amr` + per-membership org `type` in its RS256 token (login-with-TOTP only;
+  refresh/OAuth ⇒ `mfa=false`) and exposes `/internal/admin/users/{id}`+`?q=`; merchant-onboarding
+  exposes `/internal/admin/merchants/{id}`+`?q=` (org-RBAC bypassed for platform admin; `account_ref`
+  never returned); payment-orchestrator (Go) adds `Store.SearchPayments` + `/internal/admin/payments`.
+  Recorded **ADR-009** (trusted-internal-network `/internal/admin` surface). **95.5% coverage, 50
+  tests** (unit + testcontainers integration), ruff/black/mypy clean; identity (95 tests) + merchant
+  (100 tests) + payment-orchestrator (go test/vet/gofmt) stay green. **Invariant audit PASS**
+  (read-only/non-custodial; A.2–A.8 N/A; least-privilege RBAC + full audit coverage; no secrets/PII
+  leak). **Security review: ship** — fixed LIKE-wildcard escaping in the search repos; one tracked
+  follow-up below. Wired into `docker-compose.yml` (`:8092`, default profile, shared `admin` schema,
+  reuses the pinned dev RSA public key so identity-minted MFA tokens verify) + CI (`admin-backoffice`
+  job). Built **ahead of dep work13** via the `AuditSink` seam. Deferred (follow-ups, not blocking):
+  (a) **harden the `/internal/admin` surface** — today it relies only on the network boundary (the
+  established work10/work02 trusted-network precedent, documented in ADR-009 + asserted "never
+  gateway-exposed"); add mTLS or a shared service token, or enforce a hard NetworkPolicy. (b)
+  defense-in-depth response allowlist on the entity view (today it trusts upstream redaction). (c)
+  batch the per-membership org lookup in identity `_roles` (N+1 on login). (d) live JWKS fetch
+  replacing static-key pinning; (e) Phase-2 mutations (suspend/force-refund/resolve/feature-flags +
+  dual-approval) per spec §2.18.

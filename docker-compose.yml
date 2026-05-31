@@ -209,6 +209,62 @@ services:
       retries: 10
       start_period: 25s
 
+  # work11 — admin-backoffice (Python/FastAPI). Internal, read-only ops console (Phase 1): unified
+  # search + entity drill-down views across users/merchants/PayLinks/payments, gated by admin JWT +
+  # MFA + default-deny scopes, every access audited. Owns the thin `admin` schema (staff scope
+  # grants + the Phase-2 flag/announcement tables) and reads every entity through the other
+  # services' admin/internal HTTP endpoints (no cross-schema DB reads). JWT *consumer*
+  # (verifier-only): ADMIN_JWT_PUBLIC_KEY_PEM is the public half of the FIXED dev keypair pinned on
+  # identity-service, so an identity-minted MFA token verifies here. Authorization is default-deny —
+  # grant staff via admin.staff (prod) or ADMIN_DEV_STAFF_GRANTS=<sub>:superuser (dev). It boots
+  # without the upstreams (search degrades gracefully), so it depends only on Postgres + Redis.
+  # Default profile — no chain dependency.
+  admin-backoffice:
+    build:
+      context: ./linkmint-backend/admin-backoffice
+    environment:
+      ADMIN_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
+      ADMIN_REDIS_URL: redis://redis:6379/0
+      ADMIN_JWT_ISSUER: linkmint-identity
+      ADMIN_JWT_AUDIENCE: linkmint
+      ADMIN_LOG_LEVEL: INFO
+      ADMIN_AUDIT_SINK_MODE: log
+      ADMIN_IDENTITY_SERVICE_URL: http://identity-service:8090
+      ADMIN_MERCHANT_SERVICE_URL: http://merchant-onboarding:8091
+      ADMIN_PAYLINK_SERVICE_URL: http://paylink-service:8000
+      ADMIN_PAYMENT_ORCHESTRATOR_URL: http://payment-orchestrator:8080
+      # Default-deny: empty = no one is staff until granted in admin.staff. For a quick local demo,
+      # set "<your-jwt-sub>:superuser" (dev-only convenience; NOT a real secret).
+      ADMIN_DEV_STAFF_GRANTS: ""
+      # Dev-only public key matching identity-service's pinned private key (see identity note above).
+      ADMIN_JWT_PUBLIC_KEY_PEM: |-
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4ICsoMfDlpFGxfKDkwaO
+        CSicE31hGuzVJ5xSxfB1Ybl2yBg5pVMsOZ/Wg5xrW0Hiwi3Us7GWJowpLSCxizw7
+        dgmkrSmKbVU9z/q2nnJcb0gAWCKreBQ0AWS1K3onUXV2ACkp2fmRktpdTU9ZEkCm
+        dXcegWENBM4saL+UhFOHu0/U85ImhlqRxw+ccXwuq9V0GowWYjVGgUB0FOwd2wKY
+        XdgdirHZQ4w7MwJ4zyF3P/8g3+9mcuWRcLc3Onx7g2h7IcUp0rw9phOx/8bsGodw
+        FWx3y3ulTGriFc796lQb/7t8PZpYONULjPw6tABKVBC29hm4uh1M2Ab36UFrjZyV
+        DQIDAQAB
+        -----END PUBLIC KEY-----
+    ports:
+      - "8092:8092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8092/internal/readyz').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
   # work02 — payment lifecycle conductor (Go/chi). Reacts to lVM chain events and reconciles
   # against on-chain truth (read-through RPC + WS). The chain devnet is `--profile e2e` only;
   # without it readyz reports the chain dep down (liveness/healthz stays up). With `--profile e2e`

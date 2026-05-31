@@ -17,6 +17,7 @@ from app.api.v1.bank_accounts import router as bank_accounts_router
 from app.api.v1.contracts import router as contracts_router
 from app.api.v1.documents import router as documents_router
 from app.api.v1.internal import router as internal_router
+from app.api.v1.internal_admin import router as internal_admin_router
 from app.api.v1.merchants import router as merchants_router
 from app.config import Settings, get_settings
 from app.db.session import make_engine, make_sessionmaker
@@ -99,6 +100,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(bank_accounts_router)
     app.include_router(contracts_router)
     app.include_router(internal_router)
+    app.include_router(internal_admin_router)
 
     @app.get("/internal/healthz")
     async def healthz() -> dict[str, str]:

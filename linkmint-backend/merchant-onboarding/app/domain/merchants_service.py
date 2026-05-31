@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from app.config import Settings
-from app.db.models import MerchantRow
+from app.db.models import BankAccountRow, MerchantRow
 from app.db.repositories import MerchantRepository
 from app.domain import rbac, state_machine
 from app.domain.models import FeeTier, MerchantStatus, MerchantType, ReviewDecision
@@ -95,6 +95,21 @@ class MerchantsService:
         if merchant is None or rbac.org_role(principal, str(merchant.org_id)) is None:
             raise AppError(ErrorCode.MERCHANT_NOT_FOUND, "merchant not found")
         return merchant
+
+    async def get_admin(self, merchant_id: uuid.UUID) -> MerchantRow:
+        """Fetch any merchant for the internal/admin surface (no org-RBAC; transport authorizes)."""
+        merchant = await self._repo.get_merchant(merchant_id)
+        if merchant is None:
+            raise AppError(ErrorCode.MERCHANT_NOT_FOUND, "merchant not found")
+        return merchant
+
+    async def list_bank_accounts_admin(self, merchant_id: uuid.UUID) -> list[BankAccountRow]:
+        """Bank accounts for the internal/admin surface (id/status only — never the ref)."""
+        return await self._repo.list_bank_accounts(merchant_id)
+
+    async def search(self, q: str, limit: int = 20) -> list[MerchantRow]:
+        """Admin search by business_name/registration_no substring or exact merchant_id/org_id."""
+        return await self._repo.search_merchants(q, limit)
 
     async def set_fee_tier(
         self, *, principal: AccessClaims, merchant_id: uuid.UUID, tier: str

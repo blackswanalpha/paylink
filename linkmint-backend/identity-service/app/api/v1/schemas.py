@@ -172,6 +172,21 @@ class RevokeApiKeyResponse(BaseModel):
     status: str
 
 
+# ── internal admin (read-only; consumed by admin-backoffice over the trusted internal surface) ──
+class AdminUserView(BaseModel):
+    user_id: str
+    email: str | None
+    phone: str | None
+    kyc_tier: int
+    status: str
+    created_at: datetime
+    last_login_at: datetime | None
+
+
+class AdminUserListResponse(BaseModel):
+    items: list[AdminUserView]
+
+
 # ── organizations / members ──
 class CreateOrgRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)

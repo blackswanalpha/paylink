@@ -179,3 +179,34 @@ Format:
   phase needs WAF / declarative quotas / a dev portal, Kong Enterprise (`openid-connect`,
   `exit-transformer`) drops in without changing the `/v1` contract or the envelope. (7)
   `standard.md`'s ADR-003 api-gateway row is annotated to point here.
+
+## ADR-009 — admin/internal read endpoints are gateway-internal (trusted-network), bypassing tenant RBAC
+- **Status:** Accepted (work11)
+- **Date:** 2026-06-01
+- **Context:** work11 (admin-backoffice) is a read-only ops console that must read any tenant's
+  users / merchants / PayLinks / payments. The owning services either had no admin lookup
+  (identity user-by-id/search; payment search) or gated reads to org members (merchant
+  `GET /v1/merchants/{id}`), which a platform admin is not. `backendfeatures.md §2.18` mandates
+  read-through to other services' APIs — **no cross-schema DB reads**. So the console needs a read
+  surface on each service that a platform admin can call without being a member of the target org.
+- **Decision:** Add `/internal/admin/*` read endpoints on identity-service, merchant-onboarding,
+  and payment-orchestrator that (a) live OUTSIDE `/v1`, (b) carry **no** per-request JWT, and (c)
+  intentionally bypass tenant/org RBAC. They are reachable only over the internal network by
+  admin-backoffice, which has already verified the staff JWT + **MFA** + a **default-deny** scope
+  before calling — following the established merchant `/internal/{id}/decision` (work10) and
+  `payment-orchestrator → paylink-service` (work02) trusted-internal-network precedent. To make the
+  gate real, identity-service's RS256 access token now carries an `mfa`/`amr` marker (set only when
+  login used a verified TOTP; refresh/OAuth mint `mfa=false`) and the per-membership org `type`, so
+  the console authorizes statelessly. *Who* is staff and *which* scopes they hold is owned by
+  admin-backoffice (`admin.staff`, default-deny) — not by the upstream services.
+- **Consequences:** (1) These `/internal/*` ports MUST never be exposed through the public
+  api-gateway (it routes only `/v1/*`); each new router's docstring asserts the internal-only
+  contract. (2) The merchant org-RBAC bypass is deliberate and correct for a platform admin; the
+  responses still **redact secrets** — bank `account_ref`/plaintext is never returned, and the user
+  view exposes no password/MFA/refresh hashes. (3) The token additions (`mfa`/`amr`/org `type`) are
+  purely additive and backward-compatible (work10's verifier ignores unknown claims). (4) Every
+  console read is audited at a single chokepoint; when work13 (audit-log-service) lands, the
+  `LogAuditSink` becomes an `HttpAuditSink` with no call-site change. (5) Hardening the
+  trusted-network assumption (mTLS or a shared service token on `/internal/*`) can be layered on
+  later without changing the console — tracked as a backlog item. (6) The dev-keypair reuse for JWT
+  verification is already covered by the identity/merchant dev-fixture precedent (ADR-008 seam).

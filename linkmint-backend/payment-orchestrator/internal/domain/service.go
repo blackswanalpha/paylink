@@ -139,6 +139,12 @@ func (s *Service) Get(ctx context.Context, id string) (Payment, error) {
 	return p, nil
 }
 
+// Search returns payments matching q (an exact id/paylink_id or a status). It is the read-only
+// admin lookup (admin-backoffice, work11): no chain reconcile, no funds, no settlement decision.
+func (s *Service) Search(ctx context.Context, q string, limit int) ([]Payment, error) {
+	return s.store.SearchPayments(ctx, q, limit)
+}
+
 // reconcile reads on-chain status and advances the stored payment toward it. It is the read-path
 // safety net that also closes any gap from missed WS events. Idempotent and best-effort.
 func (s *Service) reconcile(ctx context.Context, p Payment) (Payment, bool) {

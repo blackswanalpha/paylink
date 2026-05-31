@@ -5,6 +5,8 @@ package memory
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,6 +82,28 @@ func (s *Store) GetPaymentByPayLink(_ context.Context, paylinkID string) (domain
 		return domain.Payment{}, domain.ErrNotFound
 	}
 	return s.byID[id], nil
+}
+
+// SearchPayments returns payments matching an exact id/paylink_id or status (case-insensitive),
+// most recent first. Mirrors the postgres store's read-only admin lookup.
+func (s *Store) SearchPayments(_ context.Context, q string, limit int) ([]domain.Payment, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	qu := strings.ToUpper(q)
+	hits := make([]domain.Payment, 0)
+	for _, p := range s.byID {
+		if p.ID == q || p.PayLinkID == q || string(p.Status) == qu {
+			hits = append(hits, p)
+		}
+	}
+	sort.Slice(hits, func(i, j int) bool { return hits[i].CreatedAt.After(hits[j].CreatedAt) })
+	if len(hits) > limit {
+		hits = hits[:limit]
+	}
+	return hits, nil
 }
 
 // ApplyChainEvent advances the payment idempotently. Duplicate (paylinkID, seq) refs are no-ops.

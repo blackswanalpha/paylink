@@ -147,6 +147,18 @@ class FakeRepository:
     async def get_merchant_by_org(self, org_id: uuid.UUID) -> MerchantRow | None:
         return next((m for m in self.merchants.values() if m.org_id == org_id), None)
 
+    async def search_merchants(self, q: str, limit: int = 20) -> list[MerchantRow]:
+        ql = q.lower()
+        hits = [
+            m
+            for m in self.merchants.values()
+            if ql in m.business_name.lower()
+            or (m.registration_no and ql in m.registration_no.lower())
+            or str(m.merchant_id) == q
+            or str(m.org_id) == q
+        ]
+        return sorted(hits, key=lambda m: m.business_name)[:limit]
+
     # ── bank accounts ──
     async def insert_bank_account(self, row: BankAccountRow) -> BankAccountRow:
         self.bank_accounts[row.bank_account_id] = row

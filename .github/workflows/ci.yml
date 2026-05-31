@@ -178,6 +178,29 @@ jobs:
       - name: test (unit + integration, 80% gate)
         run: pytest
 
+  # Admin-backoffice service (Python/FastAPI, work11). Full pytest = unit + testcontainers
+  # integration; the --cov-fail-under=80 gate (in pyproject) is only met by the full suite. JWT
+  # consumer (verifier-only); reads the other services over HTTP (faked/mocked in tests) — no secrets.
+  admin-backoffice:
+    name: admin-backoffice
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: linkmint-backend/admin-backoffice
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: linkmint-backend/admin-backoffice/pyproject.toml
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - name: lint + format + types
+        run: ruff check . && black --check . && mypy .
+      - name: test (unit + integration, 80% gate)
+        run: pytest
+
   # API gateway (Kong, DB-less declarative). No app code to unit-test — validate the config.
   api-gateway:
     name: api-gateway
