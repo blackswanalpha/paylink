@@ -92,6 +92,39 @@ services:
       retries: 10
       start_period: 25s
 
+  # work09 — identity-service (Python/FastAPI). System of record for users/orgs/roles/API keys/MFA
+  # and the RS256 JWT issuer the api-gateway verifies. Shares the Postgres instance (owns the
+  # `identity` schema) + Redis. OAuth runs in fake/stub mode locally (no external creds). The JWT/MFA
+  # keys are omitted so an ephemeral dev keypair is generated at startup; the public key is served at
+  # /v1/auth/.well-known/jwks.json. Default profile — no chain dependency.
+  identity-service:
+    build:
+      context: ./linkmint-backend/identity-service
+    environment:
+      IDENTITY_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
+      IDENTITY_REDIS_URL: redis://redis:6379/0
+      IDENTITY_JWT_ISSUER: linkmint-identity
+      IDENTITY_JWT_AUDIENCE: linkmint
+      IDENTITY_OAUTH_FAKE: "true"
+      IDENTITY_LOG_LEVEL: INFO
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8090/internal/readyz').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
   # work02 — payment lifecycle conductor (Go/chi). Reacts to lVM chain events and reconciles
   # against on-chain truth (read-through RPC + WS). The chain devnet is `--profile e2e` only;
   # without it readyz reports the chain dep down (liveness/healthz stays up). With `--profile e2e`
@@ -144,6 +177,14 @@ services:
       # Dev HS256 secret — LOCAL ONLY. Prod: GATEWAY_JWT_ALGORITHM=RS256 + the identity-service key.
       GATEWAY_JWT_DEV_SECRET: devsecret-change-me
       GATEWAY_JWT_CREATOR_ADDR_CLAIM: creator_addr
+      # work09 RS256 seam (additive, non-breaking): to validate identity-service's RS256 tokens at
+      # the gateway, uncomment the `identity-rs256` consumer in kong/kong.yml.tmpl and set these to
+      # identity's issuer + public key (served at identity's /v1/auth/.well-known/jwks.json). The
+      # HS256 dev path above stays intact (the `jwt` plugin selects the credential by the `iss`
+      # claim). Left inactive locally because identity generates an ephemeral keypair at startup;
+      # provisioning a static key / dynamic JWKS fetch is a tracked follow-up.
+      # GATEWAY_JWT_RS256_ISSUER: linkmint-identity
+      # GATEWAY_JWT_RS256_PUBLIC_KEY: ""
       GATEWAY_PARTNER_API_KEY: devpartnerkey-change-me
       GATEWAY_PARTNER_CREATOR_ADDR: "0x00000000000000000000000000000000000000bb"
       GATEWAY_RATE_LIMIT_PER_MINUTE: "100"

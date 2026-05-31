@@ -132,6 +132,29 @@ jobs:
       - name: test (unit + integration, 80% gate)
         run: pytest
 
+  # Identity service (Python/FastAPI, work09). Full pytest = unit + testcontainers integration; the
+  # --cov-fail-under=80 gate (in pyproject) is only met by the full suite. OAuth runs in fake mode and
+  # JWT/MFA keys auto-generate, so no secrets are needed.
+  identity-service:
+    name: identity-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: linkmint-backend/identity-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: linkmint-backend/identity-service/pyproject.toml
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - name: lint + format + types
+        run: ruff check . && black --check . && mypy .
+      - name: test (unit + integration, 80% gate)
+        run: pytest
+
   # API gateway (Kong, DB-less declarative). No app code to unit-test — validate the config.
   api-gateway:
     name: api-gateway
