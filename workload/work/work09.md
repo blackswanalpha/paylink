@@ -2,7 +2,7 @@
 
 > **Seeded** — expand with `/work 09` when picked up.
 
-- **Status:** todo · **Owner:** service-builder · **Stack:** Python/FastAPI · **Depends on:** 15, 16, 17 · **Flow:** [flow09](../flow/flow09.md)
+- **Status:** done · **Owner:** service-builder · **Stack:** Python/FastAPI · **Depends on:** 15, 16, 17 · **Flow:** [flow09](../flow/flow09.md)
 - **Phase:** 1 / MVP · **Spec:** backendfeatures.md §2.2
 
 ## Goal
@@ -29,11 +29,11 @@ MFA, scoped API keys, and session management — consumed by the api-gateway for
   the event bus (work15); the standard error envelope.
 
 ## Acceptance criteria
-- [ ] Register → login → refresh → authenticated `/v1/users/me` round-trip works with RS256 JWT.
-- [ ] API key issuance with scopes; revocation; session listing + per-session revoke.
-- [ ] TOTP enroll + verify; RBAC enforced on org endpoints.
-- [ ] `identity.*` events published; tests ≥80%; lint/build clean.
-- [ ] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] Register → login → refresh → authenticated `/v1/users/me` round-trip works with RS256 JWT.
+- [x] API key issuance with scopes; revocation; session listing + per-session revoke.
+- [x] TOTP enroll + verify; RBAC enforced on org endpoints.
+- [x] `identity.*` events published; tests ≥80% (94.3%); lint/build clean.
+- [x] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service (Python/FastAPI)" + "Full stack".

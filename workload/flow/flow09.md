@@ -17,4 +17,4 @@
 | 7 | Verify register→login→authed call on the stack | `/verify` |
 
 ## Done
-- [ ] [work09](../work/work09.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).
+- [x] [work09](../work/work09.md) criteria met; DoD complete; marked `done` in [backlog.md](../backlog.md).

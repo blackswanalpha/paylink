@@ -21,7 +21,7 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 16 | [work16](work/work16.md) / [flow16](flow/flow16.md) | Double-entry ledger (shared `ledger` schema) | Python/Go lib | 15 | todo |
 | 17 | [work17](work/work17.md) / [flow17](flow/flow17.md) | Idempotency framework (shared) | lib + Redis | 15 | todo |
 | 18 | [work18](work/work18.md) / [flow18](flow/flow18.md) | Observability (OTel tracing + Prometheus + logs) | infra | — | todo |
-| 09 | [work09](work/work09.md) / [flow09](flow/flow09.md) | 2.2 Identity service | Python/FastAPI | 15,16,17 | todo |
+| 09 | [work09](work/work09.md) / [flow09](flow/flow09.md) | 2.2 Identity service | Python/FastAPI | 15,16,17 | done |
 | 01 | [work01](work/work01.md) / [flow01](flow/flow01.md) | 2.5 PayLink service | Python/FastAPI | 15,16 | done |
 | 10 | [work10](work/work10.md) / [flow10](flow/flow10.md) | 2.3 Merchant onboarding | Python/FastAPI | 09 | todo |
 | 11 | [work11](work/work11.md) / [flow11](flow/flow11.md) | 2.4 Admin backoffice (read-only) | Python/FastAPI | 09 | todo |
@@ -340,3 +340,40 @@ never expands the active item ([scope.md](scope.md)).
   09–14 land they extend compose + CI per the living-item convention. Deferred (follow-ups, not blocking):
   path-filtered / required-check tuning + GitHub branch-protection wiring (needs the repo live on GitHub);
   running the e2e smoke on every PR (currently gated); a frontend test job once the web app has tests.
+- 2026-05-31 — work09 → **done**. `linkmint-backend/identity-service` shipped (Python 3.12 / FastAPI),
+  mirroring the work01 reference layout. Surfaces the full `/v1` identity API: `/v1/auth/*`
+  (register, login, refresh, logout, oauth start/callback, mfa enroll/verify/disable), `/v1/users/me`
+  (+ scoped `/api-keys`), `/v1/organizations` (+ `/members`), `/v1/sessions`, and the JWKS/OIDC
+  metadata. **RS256 JWT issuer**: 60-min access token (claims `sub`/`iss`/`aud`/`exp`/`jti`/`sid`/
+  `roles`/`kyc_tier`), opaque **single-use refresh tokens** (SHA-256 at rest) with rotation +
+  reuse-detection (replaying a rotated token revokes the whole session family + emits `auth.failed`);
+  the service verifies its OWN tokens so the `/users/me` round-trip is gateway-independent.
+  **argon2id** passwords + API keys (full `lm_live_` key shown once, hash-only at rest), **TOTP MFA**
+  (secret AES-GCM-encrypted, the KMS stand-in), **RBAC** (owner/admin/developer/operator/viewer +
+  payer) enforced from **fresh DB memberships** (not the stale token), scope-grant capping. Owns the
+  `identity` Postgres schema (7 tables + `identity_events` outbox; numbered Alembic migration);
+  publishes `identity.*` via the LogPublisher seam; `compliance.kyc.*` consumer seam. Standard error
+  envelope, structlog + correlation id, Idempotency-Key (Redis 24h; the api-key issue secret is
+  **never cached** — redacted on replay), healthz/readyz/metrics. **OAuth = stub + seam** (owner
+  choice): pluggable provider with a deterministic local fake (`IDENTITY_OAUTH_FAKE`), real
+  Google/Apple/GitHub config-driven but not verified locally. **Built ahead of deps 15/16/17** via
+  seams (event LogPublisher + in-tx outbox → work15; copied IdempotencyStore → work17; no ledger
+  coupling — non-custodial → work16), the established work01/02/05 convention. **Gateway = additive
+  RS256 seam** (owner choice): identity issues RS256 + serves JWKS; an additive `identity-rs256`
+  Kong consumer is wired commented (HS256 dev path intact, `kong config parse` green) with the
+  `GATEWAY_JWT_RS256_*` env ready to activate. **94.3% coverage, 87 tests** (unit + testcontainers
+  integration), ruff/black/mypy clean. **Invariant audit PASS** on all 8 + secrets/argon2/envelope/
+  migration. **Security review** of the auth surface (alg-confusion closed + tested, refresh
+  rotation/reuse, fresh-DB RBAC, MFA-before-token, no SQL-injection / secret leakage) — **fixed two
+  findings**: HIGH OAuth email-linking takeover (no longer auto-merges by email — creates a fresh
+  OAuth-only account) and MEDIUM full-API-key-in-Redis (idempotency now redacts the one-time secret).
+  **Verified live** via `docker compose up -d --wait` (identity-service healthy): register→login→
+  RS256 `/users/me`→refresh(+reuse=401), org→api-key(issue/list/revoke)→viewer-invite-403,
+  TOTP enroll→verify→login-requires-MFA, sessions current+revoke, OAuth-fake, idempotent replay,
+  JWKS, structured logs w/ trace_id + no secrets. Wired into `docker-compose.yml` (`:8090`, default
+  profile, shared Postgres `identity` schema) + CI (`identity-service` job). Deferred (follow-ups,
+  not blocking): full gateway RS256 cutover + routing identity through the gateway + `user_id`↔
+  `creator_addr` mapping (work05); jti/session access-token denylist (suspension takes ≤access-TTL);
+  WebAuthn/SMS-OTP MFA + OAuth `state` CSRF + Apple id_token sig verification + real-creds OAuth
+  verification (Phase 2); real Kafka/SQS transport + kyc consumer wiring (work15/16). Repo commit:
+  feature branch, attributed to the owner (no bot trailer); not pushed (awaiting confirmation).

@@ -124,6 +124,20 @@ consumers:
     keyauth_credentials:
       - key: "${GATEWAY_PARTNER_API_KEY}"
 
+  # identity-service RS256 (work09 — ADDITIVE seam, left commented so `kong config parse` stays green
+  # while the key is unprovisioned locally; identity generates an ephemeral keypair at startup). To
+  # activate end-to-end RS256 at the gateway: uncomment this consumer and set GATEWAY_JWT_RS256_ISSUER
+  # (== IDENTITY_JWT_ISSUER, e.g. linkmint-identity) + GATEWAY_JWT_RS256_PUBLIC_KEY (identity's public
+  # PEM, served at /v1/auth/.well-known/jwks.json). The HS256 dev consumer above is left intact — the
+  # `jwt` plugin picks the credential by the token's `iss` claim, so both token types validate. Remove
+  # the HS256 dev secret at the full prod cutover (alg-confusion hygiene). Dynamic JWKS fetch = follow-up.
+  # - id: 44444444-4444-4444-4444-444444444444
+  #   username: identity-rs256
+  #   jwt_secrets:
+  #     - key: "${GATEWAY_JWT_RS256_ISSUER}"
+  #       algorithm: RS256
+  #       rsa_public_key: "${GATEWAY_JWT_RS256_PUBLIC_KEY}"
+
 plugins:
   # Correlation id: reuse an inbound X-Request-Id or generate one; echo it back on the response and
   # forward it downstream (the other services key their structured logs off the same header).
