@@ -1,0 +1,40 @@
+# The repo root is a Docker build context for services whose Dockerfile copies the paylink-chain
+# module (for the `replace` directive) plus their own module: proof-validator (work03) and the
+# mpesa-adapter CORE (work04). Exclude everything else so the context stays small.
+
+# Sibling backend services / clients / docs those images do not build from.
+linkmint-backend/paylink-service/
+linkmint-backend/payment-orchestrator/
+# Keep adapters/mpesa (the Go core builds from the repo root); exclude any other adapters and the
+# Node rail service (it builds from its own context, not the repo root).
+adapters/*
+!adapters/mpesa/
+adapters/mpesa/daraja-service/
+apps/
+sdks/
+docs/
+monitoring/
+infra/
+.claude/
+.github/
+
+# VCS, IDE, design files.
+.git/
+*.pen
+
+# Chain runtime data + node key (not needed to build; never ship secrets).
+paylink-chain/data/
+**/*.key
+
+# Language caches / build artifacts / coverage.
+**/node_modules/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/coverage.out
+**/htmlcov/
+**/bin/

@@ -1,0 +1,16 @@
+# Secrets / local config — never commit
+.env
+*.env
+!.env.example
+
+# Rendered declarative config (contains substituted secrets; generated at runtime)
+kong/kong.yml
+
+# Python test venv / artifacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/

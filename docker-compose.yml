@@ -1,0 +1,271 @@
+# LinkMint local stack. `docker compose up -d` boots Postgres + Redis + paylink-service.
+# Add `--profile e2e` to also boot a single-validator paylink-chain devnet for live read-through.
+name: linkmint
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: paylink
+      POSTGRES_USER: paylink
+      POSTGRES_PASSWORD: paylink
+    # Not published to the host (reached over the compose network). Add a `ports:` mapping if you
+    # want a host DB client to connect.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paylink -d paylink"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Optional single-validator lVM devnet (live chain read-through). Enable with `--profile e2e`.
+  # Pinned to a deterministic single-validator genesis (requiredValidations=1) and validator key so
+  # the proof-validator (same key) can settle PayLinks. Use a fresh `chaindata` volume when changing
+  # the genesis: `docker compose --profile e2e down -v`.
+  paylink-chain:
+    profiles: ["e2e"]
+    build:
+      context: ./paylink-chain
+    command:
+      - "--datadir"
+      - "/data"
+      - "--rpc"
+      - ":8545"
+      - "--genesis"
+      - "/genesis/genesis.devnet.json"
+      - "--privkey"
+      - "b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291"
+      - "--block-interval"
+      - "1000"
+    # Reached over the compose network as http://paylink-chain:8545; also published to the host on
+    # 8545 so the e2e settlement test (test/e2e_settlement_test.go) can drive the chain RPC directly.
+    ports:
+      - "8545:8545"
+    volumes:
+      - chaindata:/data
+      - ./linkmint-backend/proof-validator/genesis.devnet.json:/genesis/genesis.devnet.json:ro
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          wget -qO- --header='Content-Type: application/json'
+          --post-data='{"jsonrpc":"2.0","method":"paylink_chainHeight","params":{},"id":1}'
+          http://localhost:8545/ || exit 1
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  paylink-service:
+    build:
+      context: ./linkmint-backend/paylink-service
+    environment:
+      PAYLINK_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
+      PAYLINK_REDIS_URL: redis://redis:6379/0
+      PAYLINK_CHAIN_RPC_URL: http://paylink-chain:8545/
+      PAYLINK_CHAIN_SUBMIT_ENABLED: "true"
+      PAYLINK_SIGNER_MODE: service_key
+      PAYLINK_LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8000/internal/readyz').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
+  # work02 — payment lifecycle conductor (Go/chi). Reacts to lVM chain events and reconciles
+  # against on-chain truth (read-through RPC + WS). The chain devnet is `--profile e2e` only;
+  # without it readyz reports the chain dep down (liveness/healthz stays up). With `--profile e2e`
+  # the node is reachable and the WS subscriber advances lifecycle on settle/cancel/fail.
+  payment-orchestrator:
+    build:
+      context: ./linkmint-backend/payment-orchestrator
+    environment:
+      PAYMENT_HTTP_ADDR: ":8080"
+      PAYMENT_DATABASE_URL: postgres://paylink:paylink@postgres:5432/paylink?sslmode=disable
+      PAYMENT_REDIS_URL: redis://redis:6379/0
+      PAYMENT_CHAIN_RPC_URL: http://paylink-chain:8545/
+      PAYMENT_CHAIN_WS_URL: ws://paylink-chain:8545/ws
+      PAYMENT_PAYLINK_SERVICE_URL: http://paylink-service:8000
+      PAYMENT_CHAIN_EVENTS_ENABLED: "true"
+      # work04 — registered MPesa rail adapter (config-only registry; logged at boot, not called).
+      PAYMENT_ADAPTER_MPESA_URL: http://mpesa-adapter:8082
+      PAYMENT_LOG_LEVEL: INFO
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "wget -qO- http://localhost:8080/internal/healthz || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # work05 — api-gateway (Kong DB-less declarative; ADR-008). The single authenticated ingress:
+  # routes /v1/paylinks* → paylink-service and /v1/payments* → payment-orchestrator; validates JWT
+  # (dev HS256 here; RS256 + identity-service when work09 lands) + partner API keys, rejecting with
+  # the standard error envelope; injects a trustworthy X-Creator-Addr and strips any client-supplied
+  # one (ADR-006 anti-spoofing); Redis-backed rate limit; X-Request-Id propagation. Default profile
+  # — the front door of the local stack on :8088 (Kong admin stays bound to localhost, not exposed).
+  api-gateway:
+    build:
+      context: ./linkmint-backend/api-gateway
+    environment:
+      GATEWAY_PAYLINK_SERVICE_URL: http://paylink-service:8000
+      GATEWAY_PAYMENT_ORCHESTRATOR_URL: http://payment-orchestrator:8080
+      GATEWAY_REDIS_HOST: redis
+      GATEWAY_REDIS_PORT: "6379"
+      GATEWAY_JWT_ISSUER: linkmint-dev
+      # Dev HS256 secret — LOCAL ONLY. Prod: GATEWAY_JWT_ALGORITHM=RS256 + the identity-service key.
+      GATEWAY_JWT_DEV_SECRET: devsecret-change-me
+      GATEWAY_JWT_CREATOR_ADDR_CLAIM: creator_addr
+      GATEWAY_PARTNER_API_KEY: devpartnerkey-change-me
+      GATEWAY_PARTNER_CREATOR_ADDR: "0x00000000000000000000000000000000000000bb"
+      GATEWAY_RATE_LIMIT_PER_MINUTE: "100"
+      KONG_LOG_LEVEL: notice
+    ports:
+      # Only the proxy is published to the host. The status/metrics listener (:8100) and the admin
+      # API (127.0.0.1:8001) stay on the compose network — Prometheus (work18) scrapes :8100 there.
+      - "8088:8088"
+    depends_on:
+      redis:
+        condition: service_healthy
+      paylink-service:
+        condition: service_healthy
+      payment-orchestrator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # work03 — proof-validator (Go/chi). Verifies a signed rail-agnostic proof and broadcasts a
+  # TxSubmitValidation settlement tx to the lVM. It cannot function without the chain, so it is
+  # `--profile e2e` only. The build context is the repo root because its module replaces
+  # github.com/paylink/paylink-chain with ../../paylink-chain (reused byte-exact via pkg/lvm).
+  # It signs with the same validator key the chain runs with, and devnet auto-stake makes it the
+  # single active validator (requiredValidations=1) so it can settle.
+  proof-validator:
+    profiles: ["e2e"]
+    build:
+      context: .
+      dockerfile: linkmint-backend/proof-validator/Dockerfile
+    environment:
+      PROOF_VALIDATOR_HTTP_ADDR: ":8081"
+      PROOF_VALIDATOR_DATABASE_URL: postgres://paylink:paylink@postgres:5432/paylink?sslmode=disable
+      PROOF_VALIDATOR_REDIS_URL: redis://redis:6379/0
+      PROOF_VALIDATOR_CHAIN_RPC_URL: http://paylink-chain:8545/
+      PROOF_VALIDATOR_SIGNER_MODE: service_key
+      PROOF_VALIDATOR_CHAIN_SIGNER_KEY: b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291
+      PROOF_VALIDATOR_TRUSTED_PUBKEYS: 04e63cbe3984eae5834516e4af2e8e7fa88ce497f68bdcacf95a8fdaf9db4b02efa0ebcb964a1a74ec3d8c748b1e32986788f6c9a4aac39f0b79ac359801a5317d
+      PROOF_VALIDATOR_PAYLINK_CROSSCHECK: "true"
+      PROOF_VALIDATOR_AUTO_STAKE: "true"
+      PROOF_VALIDATOR_LOG_LEVEL: INFO
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      paylink-chain:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/internal/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # work04 — MPesa adapter, Node.js Daraja rail SDK (ADR-007). Speaks Daraja (OAuth + STK push + raw
+  # callback parsing) and forwards rail-neutral fields to the Go core. DARAJA_STUB=true so the devnet
+  # e2e flow needs no Safaricom credentials. `--profile e2e` (end-to-end settlement needs chain +
+  # validator). Reached over the compose network as http://mpesa-daraja:8083; published for the e2e
+  # test (which POSTs a Daraja callback directly).
+  mpesa-daraja:
+    profiles: ["e2e"]
+    build:
+      context: ./adapters/mpesa/daraja-service
+    environment:
+      DARAJA_SERVICE_PORT: "8083"
+      DARAJA_STUB: "true"
+      DARAJA_SANDBOX: "true"
+      DARAJA_CALLBACK_URL: http://mpesa-daraja:8083/daraja/callback?t=devnet-callback-token
+      DARAJA_CALLBACK_TOKEN: devnet-callback-token
+      ADAPTER_CORE_URL: http://mpesa-adapter:8082
+      MPESA_ADAPTER_INTERNAL_TOKEN: devnet-internal-token
+      DARAJA_LOG_LEVEL: info
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # work04 — MPesa adapter CORE (Go/chi). Normalizes a rail-neutral callback to the proof, signs it
+  # byte-exact via pkg/lvm, and broadcasts a settlement to the proof-validator. Build context is the
+  # repo root (its module replaces github.com/paylink/paylink-chain with ../../paylink-chain).
+  # `--profile e2e`. Signs with the devnet adapter key whose pubkey is in the validator's
+  # PROOF_VALIDATOR_TRUSTED_PUBKEYS, so its proofs verify and settle.
+  mpesa-adapter:
+    profiles: ["e2e"]
+    build:
+      context: .
+      dockerfile: adapters/mpesa/Dockerfile
+    environment:
+      MPESA_ADAPTER_HTTP_ADDR: ":8082"
+      MPESA_ADAPTER_REDIS_URL: redis://redis:6379/0
+      MPESA_ADAPTER_PROOF_VALIDATOR_URL: http://proof-validator:8081
+      MPESA_ADAPTER_DARAJA_SERVICE_URL: http://mpesa-daraja:8083
+      MPESA_ADAPTER_INTERNAL_TOKEN: devnet-internal-token
+      MPESA_ADAPTER_SIGNER_KEY: 3f7a1c0d9e8b6a5f4d3c2b1a09f8e7d6c5b4a3928170615243f5e6d7c8b9a0f1
+      MPESA_ADAPTER_DEFAULT_SHORTCODE: "174379"
+      MPESA_ADAPTER_LOG_LEVEL: info
+    ports:
+      - "8082:8082"
+    depends_on:
+      redis:
+        condition: service_healthy
+      proof-validator:
+        condition: service_healthy
+      mpesa-daraja:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/internal/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  pgdata:
+  chaindata:

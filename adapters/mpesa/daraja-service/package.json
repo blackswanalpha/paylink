@@ -1,0 +1,14 @@
+{
+  "name": "mpesa-daraja-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LinkMint MPesa adapter — Node.js Daraja rail service (OAuth + STK push + callback ingestion). Speaks MPesa; hands rail-neutral fields to the Go adapter core (work04, ADR-007).",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  }
+}

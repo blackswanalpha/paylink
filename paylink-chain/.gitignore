@@ -1,0 +1,17 @@
+# Build output
+build/
+
+# Data directory
+data/
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env

@@ -1,0 +1,13 @@
+{
+  "chainId": "paylink-devnet-1",
+  "adminAddress": "0xb186e935537a49fdfd394ab0b0110c5479ab51d2",
+  "initialSupply": 50000000000000000,
+  "maxSupply": 100000000000000000,
+  "minimumStake": 1000000000000,
+  "withdrawalCooldown": 604800,
+  "requiredValidations": 1,
+  "blockIntervalMs": 1000,
+  "initialBalances": [
+    { "address": "0xb186e935537a49fdfd394ab0b0110c5479ab51d2", "balance": 50000000000000000 }
+  ]
+}

@@ -1,0 +1,264 @@
+# LinkMint api-gateway — Kong DB-less declarative config (work05, ADR-008).
+#
+# This is a TEMPLATE: `${GATEWAY_*}` placeholders are rendered by `envsubst` at container start
+# (see ../docker-entrypoint.sh) so all config comes from the environment (12-factor). The rendered
+# /kong/kong.yml is NOT committed (git-ignored) and is the only place a secret materializes.
+#
+# Single authenticated ingress:
+#   /v1/paylinks*  -> paylink-service        (auth required)
+#   /v1/payments*  -> payment-orchestrator   (auth required)
+#   anything else  -> 404 (LinkMint envelope)
+#
+# Auth: a request passes if it carries EITHER a valid JWT (Authorization: Bearer ...) OR a valid
+# partner API key (X-API-Key). Both auth plugins fall back to the shared `anonymous` consumer on
+# failure; the serverless `access` function below then rejects the anonymous consumer with 401.
+#
+# The serverless (post-function) plugin does the two things no bundled OSS plugin can express
+# declaratively: (1) inject a trustworthy X-Creator-Addr from the verified identity while stripping
+# any client-supplied one (ADR-006 anti-spoofing), and (2) rewrite every >=400 response into the
+# LinkMint error envelope {"error":{code,message,details,trace_id}}.
+
+_format_version: "3.0"
+_transform: true
+
+services:
+  # ── paylink-service (work01) ───────────────────────────────────────────────────────────────
+  - name: paylink-service
+    url: ${GATEWAY_PAYLINK_SERVICE_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: paylinks
+        paths: ["/v1/paylinks"]
+        strip_path: false
+        preserve_host: false
+        plugins:
+          - name: jwt
+            config:
+              anonymous: 11111111-1111-1111-1111-111111111111
+              key_claim_name: iss
+              claims_to_verify: ["exp"]
+              # Header-only: never accept the token via ?jwt= or a cookie (avoids credential leak
+              # into URLs/logs and the upstream hop).
+              uri_param_names: []
+              cookie_names: []
+              run_on_preflight: true
+          - name: key-auth
+            config:
+              anonymous: 11111111-1111-1111-1111-111111111111
+              key_names: ["X-API-Key"]
+              # Header-only + let Kong scrub the key before the upstream hop (defense in depth on
+              # top of the post-function's clear_header).
+              key_in_header: true
+              key_in_query: false
+              key_in_body: false
+              hide_credentials: true
+              run_on_preflight: true
+      # Catch-all lives under this service but never proxies — request-termination short-circuits.
+      - name: catch-all
+        paths: ["/"]
+        strip_path: false
+        plugins:
+          - name: request-termination
+            config:
+              status_code: 404
+              message: "no route matched"
+
+  # ── payment-orchestrator (work02) ──────────────────────────────────────────────────────────
+  - name: payment-orchestrator
+    url: ${GATEWAY_PAYMENT_ORCHESTRATOR_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: payments
+        paths: ["/v1/payments"]
+        strip_path: false
+        preserve_host: false
+        plugins:
+          - name: jwt
+            config:
+              anonymous: 11111111-1111-1111-1111-111111111111
+              key_claim_name: iss
+              claims_to_verify: ["exp"]
+              # Header-only: never accept the token via ?jwt= or a cookie (avoids credential leak
+              # into URLs/logs and the upstream hop).
+              uri_param_names: []
+              cookie_names: []
+              run_on_preflight: true
+          - name: key-auth
+            config:
+              anonymous: 11111111-1111-1111-1111-111111111111
+              key_names: ["X-API-Key"]
+              # Header-only + let Kong scrub the key before the upstream hop (defense in depth on
+              # top of the post-function's clear_header).
+              key_in_header: true
+              key_in_query: false
+              key_in_body: false
+              hide_credentials: true
+              run_on_preflight: true
+
+consumers:
+  # Shared anonymous fallback — selected by the auth plugins when no valid credential is presented.
+  - id: 11111111-1111-1111-1111-111111111111
+    username: anonymous
+
+  # Dev user (JWT / HS256). The dev token's `iss` must equal GATEWAY_JWT_ISSUER (the jwt_secret key).
+  # The on-chain address is taken from the token's creator-addr claim; custom_id is only a fallback.
+  - id: 22222222-2222-2222-2222-222222222222
+    username: dev-user
+    custom_id: "0x00000000000000000000000000000000000000aa"
+    jwt_secrets:
+      - key: "${GATEWAY_JWT_ISSUER}"
+        algorithm: HS256
+        secret: "${GATEWAY_JWT_DEV_SECRET}"
+
+  # Sample partner (API key). MVP key store = this declarative credential (env-sourced). A real
+  # partner-key store with rotation/revocation is deferred (follow-up backlog item).
+  - id: 33333333-3333-3333-3333-333333333333
+    username: partner-acme
+    custom_id: "${GATEWAY_PARTNER_CREATOR_ADDR}"
+    keyauth_credentials:
+      - key: "${GATEWAY_PARTNER_API_KEY}"
+
+plugins:
+  # Correlation id: reuse an inbound X-Request-Id or generate one; echo it back on the response and
+  # forward it downstream (the other services key their structured logs off the same header).
+  - name: correlation-id
+    config:
+      header_name: X-Request-Id
+      generator: uuid
+      echo_downstream: true
+
+  # Basic rate limiting, keyed by the authenticated consumer (falls back to IP), backed by the
+  # shared Redis. Kong sets Retry-After on the 429; the envelope function normalizes the body.
+  - name: rate-limiting
+    config:
+      minute: ${GATEWAY_RATE_LIMIT_PER_MINUTE}
+      policy: redis
+      limit_by: consumer
+      fault_tolerant: true
+      redis:
+        host: ${GATEWAY_REDIS_HOST}
+        port: ${GATEWAY_REDIS_PORT}
+
+  # Prometheus metrics on the Status API listener (KONG_STATUS_LISTEN; :8100).
+  - name: prometheus
+    config:
+      status_code_metrics: true
+
+  # The bespoke logic (single global post-function — runs AFTER the auth plugins in each phase).
+  - name: post-function
+    config:
+      # ACCESS: inject X-Creator-Addr + strip spoofed/credential headers + require auth.
+      access:
+        - |
+          local route = kong.router.get_route()
+          local rn = route and route.name or ""
+          -- Only the authenticated /v1 routes carry identity; skip the catch-all (404) route.
+          if rn ~= "paylinks" and rn ~= "payments" then
+            return
+          end
+
+          -- Anti-spoofing: the client may never set these; the gateway is authoritative.
+          kong.service.request.clear_header("X-Creator-Addr")
+          kong.service.request.clear_header("X-Partner-Id")
+
+          -- Require authentication. Auth plugins fall through to the anonymous consumer (no
+          -- credential) on any failure; reject that here.
+          if not kong.client.get_credential() then
+            kong.service.request.clear_header("Authorization")
+            kong.service.request.clear_header("X-API-Key")
+            return kong.response.exit(401, { message = "missing or invalid credentials" })
+          end
+
+          -- Resolve the caller's on-chain address: JWT claim first, else the consumer's custom_id.
+          local creator_addr
+          local auth = kong.request.get_header("Authorization")
+          if auth then
+            local token = auth:match("^[Bb]earer%s+(.+)$")
+            if token then
+              local payload_b64 = token:match("^[^.]+%.([^.]+)%.")
+              if payload_b64 then
+                payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
+                local pad = (4 - (#payload_b64 % 4)) % 4
+                if pad > 0 then payload_b64 = payload_b64 .. string.rep("=", pad) end
+                local json = ngx.decode_base64(payload_b64)
+                if json then
+                  local claims = require("cjson.safe").decode(json)
+                  if type(claims) == "table" and claims["${GATEWAY_JWT_CREATOR_ADDR_CLAIM}"] then
+                    creator_addr = tostring(claims["${GATEWAY_JWT_CREATOR_ADDR_CLAIM}"])
+                  end
+                end
+              end
+            end
+          end
+          if not creator_addr then
+            local consumer = kong.client.get_consumer()
+            if consumer and consumer.custom_id and consumer.custom_id ~= "" then
+              creator_addr = consumer.custom_id
+            end
+          end
+
+          -- Don't leak credentials to the upstream now that identity is resolved.
+          kong.service.request.clear_header("Authorization")
+          kong.service.request.clear_header("X-API-Key")
+
+          if creator_addr and creator_addr ~= "" then
+            kong.service.request.set_header("X-Creator-Addr", string.lower(creator_addr))
+          end
+      # HEADER_FILTER: flag error responses; capture the trace id; switch to chunked JSON.
+      header_filter:
+        - |
+          local status = kong.response.get_status()
+          if status >= 400 then
+            ngx.ctx.lm_envelope = true
+            ngx.ctx.lm_status = status
+            ngx.ctx.lm_trace_id = kong.request.get_header("X-Request-Id")
+              or kong.response.get_header("X-Request-Id") or ""
+            kong.response.clear_header("Content-Length")
+            kong.response.set_header("Content-Type", "application/json; charset=utf-8")
+          end
+      # BODY_FILTER: rewrite >=400 bodies into the LinkMint envelope, preserving upstream envelopes.
+      body_filter:
+        - |
+          if not ngx.ctx.lm_envelope then return end
+          local cjson = require("cjson.safe")
+          local chunk, eof = ngx.arg[1], ngx.arg[2]
+          local buf = ngx.ctx.lm_buf or ""
+          if chunk and chunk ~= "" then buf = buf .. chunk end
+          ngx.ctx.lm_buf = buf
+          if not eof then ngx.arg[1] = nil; return end
+
+          local status = ngx.ctx.lm_status or 500
+          local codes = {
+            [400]="BAD_REQUEST",[401]="UNAUTHORIZED",[403]="FORBIDDEN",[404]="NOT_FOUND",
+            [405]="METHOD_NOT_ALLOWED",[406]="NOT_ACCEPTABLE",[408]="REQUEST_TIMEOUT",
+            [409]="CONFLICT",[413]="PAYLOAD_TOO_LARGE",[414]="URI_TOO_LONG",
+            [415]="UNSUPPORTED_MEDIA_TYPE",[429]="RATE_LIMITED",[500]="INTERNAL_ERROR",
+            [502]="BAD_GATEWAY",[503]="SERVICE_UNAVAILABLE",[504]="UPSTREAM_TIMEOUT",
+          }
+
+          local existing = cjson.decode(buf)
+          if type(existing) == "table" and type(existing.error) == "table" and existing.error.code then
+            -- Upstream already returned a LinkMint envelope — pass through unchanged.
+            ngx.arg[1] = buf
+            ngx.arg[2] = true
+            return
+          end
+
+          local message
+          if type(existing) == "table" and existing.message ~= nil then
+            message = tostring(existing.message)
+          else
+            message = codes[status] or "error"
+          end
+          local code = codes[status] or "ERROR"
+          local trace_id = ngx.ctx.lm_trace_id or ""
+          ngx.arg[1] = string.format(
+            '{"error":{"code":%s,"message":%s,"details":{},"trace_id":%s}}',
+            cjson.encode(code), cjson.encode(message), cjson.encode(trace_id))
+          ngx.arg[2] = true

@@ -1,0 +1,60 @@
+# ── Secrets / local env ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.local
+
+# ── Node / TypeScript ────────────────────────────────────────────────
+node_modules/
+dist/
+build/
+out/
+.next/
+*.tsbuildinfo
+.eslintcache
+coverage/
+.vitest/
+
+# ── Python ───────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ── Go ───────────────────────────────────────────────────────────────
+bin/
+/paylink-chain/bin/
+/paylink-chain/data/
+# Compiled binaries built at a module/cmd root instead of into bin/
+/paylink-chain/paylinkd
+/linkmint-backend/payment-orchestrator/payment-orchestrator
+/linkmint-backend/proof-validator/proof-validator
+/adapters/mpesa/mpesa-adapter
+# Coverage profiles produced by `make cover` / `make test`
+coverage.out
+cov.pkg.out
+*.coverprofile
+
+# ── Runtime / chain data ─────────────────────────────────────────────
+data/
+chaindata/
+
+# ── Editor / OS ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+# LibreOffice lock files (e.g. .~lock.system.md#)
+.~lock.*#
+
+# ── Tooling (machine-local) ──────────────────────────────────────────
+.claude/settings.local.json
