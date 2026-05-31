@@ -94,9 +94,15 @@ services:
 
   # work09 — identity-service (Python/FastAPI). System of record for users/orgs/roles/API keys/MFA
   # and the RS256 JWT issuer the api-gateway verifies. Shares the Postgres instance (owns the
-  # `identity` schema) + Redis. OAuth runs in fake/stub mode locally (no external creds). The JWT/MFA
-  # keys are omitted so an ephemeral dev keypair is generated at startup; the public key is served at
+  # `identity` schema) + Redis. OAuth runs in fake/stub mode locally (no external creds). The MFA key
+  # is omitted (ephemeral dev key at startup); the JWT public key is served at
   # /v1/auth/.well-known/jwks.json. Default profile — no chain dependency.
+  #
+  # NOTE: IDENTITY_JWT_PRIVATE_KEY_PEM below pins a FIXED dev RSA-2048 keypair shared with
+  # merchant-onboarding (which sets the matching MERCHANT_JWT_PUBLIC_KEY_PEM), so a token minted here
+  # verifies in merchant-onboarding end-to-end (work10). This is a dev-only fixture — like the inline
+  # devnet chain keys in this file — NOT a real secret; prod injects the key via env/KMS and a live
+  # JWKS fetch replaces this static pinning (tracked follow-up).
   identity-service:
     build:
       context: ./linkmint-backend/identity-service
@@ -107,6 +113,36 @@ services:
       IDENTITY_JWT_AUDIENCE: linkmint
       IDENTITY_OAUTH_FAKE: "true"
       IDENTITY_LOG_LEVEL: INFO
+      # Dev-only fixed RSA-2048 signing key (see note above) — shared with merchant-onboarding.
+      IDENTITY_JWT_PRIVATE_KEY_PEM: |-
+        -----BEGIN PRIVATE KEY-----
+        MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDggKygx8OWkUbF
+        8oOTBo4JKJwTfWEa7NUnnFLF8HVhuXbIGDmlUyw5n9aDnGtbQeLCLdSzsZYmjCkt
+        ILGLPDt2CaStKYptVT3P+raeclxvSABYIqt4FDQBZLUreidRdXYAKSnZ+ZGS2l1N
+        T1kSQKZ1dx6BYQ0Ezixov5SEU4e7T9TzkiaGWpHHD5xxfC6r1XQajBZiNUaBQHQU
+        7B3bAphd2B2KsdlDjDszAnjPIXc//yDf72Zy5ZFwtzc6fHuDaHshxSnSvD2mE7H/
+        xuwah3AVbHfLe6VMauIVzv3qVBv/u3w9mlg41QuM/Dq0AEpUELb2Gbi6HUzYBvfp
+        QWuNnJUNAgMBAAECggEAAKFYoPkv+Z/2voSsqzEXrtUii7+oHFYTkb+tZVcKQTrC
+        BmNxWAhs3cx3qMBcIP3xX8V2eLw5kIvwJVg/8TBjC4IivQGnpnvurv6mK9tLmqX+
+        ZnXoXUwfUIGs6iC+PZ+yaZbbuAKl77r+a13ImaXn3gyPWfQBk1Agzh207YFtXbv/
+        mxyZ01aXQwFT52/+Be7tkBjnUzOx+18G5AJgZBk3gTboTyiBgEl95ujJobU38UpP
+        nyAVN9tuIKZwmUCEjzrPylmdCjGD2Knp0f7cakgm3nseEAqOC/CD3NK2I+QA1ED7
+        k9TuPxv7bzrM3JapNT0gSdwBElUkptc5FcU4VW7v+QKBgQD7eede6xlyrlIjYee4
+        20Rc+55a/BxZEDuUr5ZTrt1wZ3Az1jqEf1QSm/DhsRQF/S9bnX+yyxTrv/Wgepxy
+        v7Y14Eu1RZ5+ytB6Tf7lg2GrxT0s/o0QxKzg/J8t+xAa2WPIT0oFXE4jNr0gYHbv
+        pYrYaA7Mg/BCU7B/WkrT6jBvdQKBgQDkio1Y8ytucw+7hxLlzI5y3/xfwCSonCsk
+        3DJxhUYApZD0YYndkKOT+4CdSPiOzupgxUClv7XdJKpfUV0YiYY0fmL1RArtFpJx
+        P7yy5RfoGOozXppXZ2LMWZKOxJmYMC4r05oLKf/91DTkWAwP+APOZdgct+b49GzF
+        2uT/s3A0OQKBgEQSP3sGEKFmZn2FZwA2+k5hHgBq9hF1v2sEDKEiWHawyUJ+3uA2
+        xz8yTwYItO7aFhOqkoKHTmZyU77Y8bhuBJiY2mV7LugLZlt0+WaPJcUlYuXnEbBU
+        TKeqOjxsFXPvHH+AVv0Ue2I00wUMl6VPHkJuCHN703FgzgnrGw45+lpxAoGBAICE
+        gZQBuuyze6di//eGHpzu5EccEAFZQNHLmfpIjeMTN/6VUyfrjHFNPzgzrsLwDNE6
+        W25Z7nVbhwtu/8EqpPOkFxYBm3tT9CoHQ5/+QIFecWVNz9FS7DYqMMZkPFNe1LgE
+        mF2q0q/0w4GdGbtpJwrMLsmHiTV6jih9PcWlLHXRAoGAMF4l3bgVvnvt6Dmnd6ZR
+        +EKz7OaS49hVGHN7OwYebQ22xA7Il98jIyD7yq+dypayDykA9jU/uTaKwJAAPjof
+        kFQvde9z1WthbrdplR6861qOOADqTybqSlH8HaXMizQq5OjOWNUprzFDKVtjmx1P
+        7tagy8Jv73cS1BPGRz2JOnQ=
+        -----END PRIVATE KEY-----
     ports:
       - "8090:8090"
     depends_on:
@@ -120,6 +156,54 @@ services:
         - >-
           python -c "import urllib.request,sys;
           sys.exit(0 if urllib.request.urlopen('http://localhost:8090/internal/readyz').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
+  # work10 — merchant-onboarding (Python/FastAPI). Owns the merchant lifecycle (business
+  # verification, document upload, bank-account linking + verification, contract acceptance,
+  # fee-tier assignment) and the DRAFT→PENDING_VERIFICATION→ACTIVE state machine. Shares the
+  # Postgres instance (owns the `merchant` schema) + Redis. It is a JWT *consumer* (verifier-only):
+  # MERCHANT_JWT_PUBLIC_KEY_PEM below is the public half of the FIXED dev keypair whose private half
+  # is pinned on identity-service above, so a token minted by identity verifies here end-to-end.
+  # Dev-only fixture (NOT a real secret); live JWKS fetch is a follow-up. Documents use the local
+  # filesystem object store; the bank-ref encryption key is omitted (ephemeral dev key at startup).
+  # Default profile — no chain dependency.
+  merchant-onboarding:
+    build:
+      context: ./linkmint-backend/merchant-onboarding
+    environment:
+      MERCHANT_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
+      MERCHANT_REDIS_URL: redis://redis:6379/0
+      MERCHANT_JWT_ISSUER: linkmint-identity
+      MERCHANT_JWT_AUDIENCE: linkmint
+      MERCHANT_OBJECT_STORE_MODE: local
+      MERCHANT_LOG_LEVEL: INFO
+      # Dev-only public key matching identity-service's pinned private key (see note above).
+      MERCHANT_JWT_PUBLIC_KEY_PEM: |-
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4ICsoMfDlpFGxfKDkwaO
+        CSicE31hGuzVJ5xSxfB1Ybl2yBg5pVMsOZ/Wg5xrW0Hiwi3Us7GWJowpLSCxizw7
+        dgmkrSmKbVU9z/q2nnJcb0gAWCKreBQ0AWS1K3onUXV2ACkp2fmRktpdTU9ZEkCm
+        dXcegWENBM4saL+UhFOHu0/U85ImhlqRxw+ccXwuq9V0GowWYjVGgUB0FOwd2wKY
+        XdgdirHZQ4w7MwJ4zyF3P/8g3+9mcuWRcLc3Onx7g2h7IcUp0rw9phOx/8bsGodw
+        FWx3y3ulTGriFc796lQb/7t8PZpYONULjPw6tABKVBC29hm4uh1M2Ab36UFrjZyV
+        DQIDAQAB
+        -----END PUBLIC KEY-----
+    ports:
+      - "8091:8091"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8091/internal/readyz').status==200 else 1)"
       interval: 10s
       timeout: 5s
       retries: 10

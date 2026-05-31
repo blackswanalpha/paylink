@@ -23,7 +23,7 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 18 | [work18](work/work18.md) / [flow18](flow/flow18.md) | Observability (OTel tracing + Prometheus + logs) | infra | — | todo |
 | 09 | [work09](work/work09.md) / [flow09](flow/flow09.md) | 2.2 Identity service | Python/FastAPI | 15,16,17 | done |
 | 01 | [work01](work/work01.md) / [flow01](flow/flow01.md) | 2.5 PayLink service | Python/FastAPI | 15,16 | done |
-| 10 | [work10](work/work10.md) / [flow10](flow/flow10.md) | 2.3 Merchant onboarding | Python/FastAPI | 09 | todo |
+| 10 | [work10](work/work10.md) / [flow10](flow/flow10.md) | 2.3 Merchant onboarding | Python/FastAPI | 09 | done |
 | 11 | [work11](work/work11.md) / [flow11](flow/flow11.md) | 2.4 Admin backoffice (read-only) | Python/FastAPI | 09 | todo |
 | 05 | [work05](work/work05.md) / [flow05](flow/flow05.md) | 2.1 API gateway | Kong (ADR-008) | 09,01 | done |
 | 02 | [work02](work/work02.md) / [flow02](flow/flow02.md) | 2.10 Payment orchestrator | Go/chi | 01,04,14 | done |
@@ -377,3 +377,38 @@ never expands the active item ([scope.md](scope.md)).
   WebAuthn/SMS-OTP MFA + OAuth `state` CSRF + Apple id_token sig verification + real-creds OAuth
   verification (Phase 2); real Kafka/SQS transport + kyc consumer wiring (work15/16). Repo commit:
   feature branch, attributed to the owner (no bot trailer); not pushed (awaiting confirmation).
+- 2026-05-31 — work10 → **done**. `linkmint-backend/merchant-onboarding` shipped (Python 3.12 /
+  FastAPI), mirroring the work01/09 reference layout. Full `/v1/merchants` API: `onboard`,
+  `{id}/documents` (multipart), `{id}/bank-accounts(+/{bid}/verify)`, `{id}/contracts` (GET/POST),
+  `{id}/fee-tier` (GET/PATCH admin), `GET {id}`. **State machine** DRAFT→PENDING_VERIFICATION→
+  ACTIVE|REJECTED|SUSPENDED via a single guarded `MerchantsService.decide()` chokepoint, with
+  **activation preconditions** (≥1 VERIFIED bank + ≥1 accepted contract, env-gated). Owns the
+  `merchant` Postgres schema (4 tables + `merchant_events` outbox; numbered Alembic migration; no
+  cross-schema FKs — `org_id`/`accepted_by` are opaque UUIDs). **Non-custodial / KMS:** bank
+  `account_details` are AES-256-GCM-encrypted to `account_ref` immediately (the `MfaCipher` model);
+  plaintext never lands in the DB, logs, responses, events, or the idempotency cache (verified live).
+  **JWT consumer** (verify-only, RS256, alg-confusion guard); **RBAC sourced from token claims** —
+  the deliberate divergence from identity's fresh-DB memberships (one schema, no cross-schema FK;
+  the RS256 signature is the trust anchor). Publishes `merchant.*` via the LogPublisher seam +
+  in-tx outbox (→work15); consumes `compliance.kyb.*` / `admin.override.*` via the
+  `MerchantEventConsumer` seam, which (with the internal `POST /internal/merchants/{id}/decision`
+  manual-review endpoint) drives the same `decide()` path so work11/work15 reuse it. **S3 deferred**
+  via an `ObjectStore` seam (LocalObjectStore default; S3 lazy-boto3 follow-up); docs store only the
+  `s3_key`, `MERCHANT_MAX_DOCUMENT_BYTES`→413. Standard error envelope, structlog + trace_id,
+  Idempotency-Key (Redis 24h; bank `account_details` excluded from fingerprint + cached body),
+  healthz/readyz/metrics. **95.8% coverage, 94 tests** (unit + testcontainers integration),
+  ruff/black/mypy clean. **Invariant audit PASS** (A.1 non-custodial defense-in-depth; A.2–A.8 N/A;
+  secrets/determinism/`any` clean). **Code review** (high) — fixed one robustness gap (consumer
+  no-ops a malformed `merchant_id` instead of raising). **Verified live** via `docker compose up`
+  (merchant-onboarding healthy): onboard→PENDING_VERIFICATION, dup→409, approve-before-prereqs→409,
+  doc upload(+413), bank add→PENDING_VERIFY→verify→VERIFIED, contract, `/internal` approve→ACTIVE,
+  no-bearer→401; DB shows ciphertext `account_ref` (0 plaintext rows) + 5 `merchant.*` events. Wired
+  into `docker-compose.yml` (`:8091`, default profile, shared `merchant` schema) with a **shared dev
+  RSA keypair** pinned across identity-service (`IDENTITY_JWT_PRIVATE_KEY_PEM`) + merchant
+  (`MERCHANT_JWT_PUBLIC_KEY_PEM`) so a real identity token verifies end-to-end; + CI
+  (`merchant-onboarding` job). Built **ahead of deps 15/16** via seams (event publisher + outbox →
+  work15; no ledger coupling — non-custodial → work16). Deferred (follow-ups, not blocking): live
+  JWKS fetch replacing the static-key pinning (gateway/ADR-008 convention); real bank-verification
+  adapters (micro-deposit/MPesa B2B name-match) + per-rail `account_details` validation; S3
+  object-store backend; streaming upload size-guard (gateway caps body today); work21 fee-pricing
+  consumes the `fee_tier`.
