@@ -31,7 +31,7 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 04 | [work04](work/work04.md) / [flow04](flow/flow04.md) | 2.14 MPesa adapter | Go core + Node rail | 03 | done |
 | 12 | [work12](work/work12.md) / [flow12](flow/flow12.md) | 2.15 Compliance-risk (basic KYC) | Python/FastAPI | 09 | done |
 | 13 | [work13](work/work13.md) / [flow13](flow/flow13.md) | 2.17 Audit-log service | Go/chi | 15,16 | done |
-| 14 | [work14](work/work14.md) / [flow14](flow/flow14.md) | 2.18 Notification (SMS/email) | Python/FastAPI | 15 | todo |
+| 14 | [work14](work/work14.md) / [flow14](flow/flow14.md) | 2.18 Notification (SMS/email) | Python/FastAPI | 15 | done |
 | 08 | [work08](work/work08.md) / [flow08](flow/flow08.md) | docker-compose + CI (incremental) | infra | 01–14 | done |
 | 35 | [work35](work/work35.md) / [flow35](flow/flow35.md) | fix: orchestrator rejects payable (PENDING) PayLinks | Go/chi | 01,02 | todo |
 
@@ -62,6 +62,15 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 31 | [work31](work/work31.md) / [flow31](flow/flow31.md) | 2.6 Subscriptions (extends 19) | Python/FastAPI | 19 | todo |
 | 32 | [work32](work/work32.md) / [flow32](flow/flow32.md) | SDK suite (Python/Go/Java/Flutter) | multi | 06 | todo |
 | 33 | [work33](work/work33.md) / [flow33](flow/flow33.md) | Dashboards (merchant/admin/mobile) | TS/Flutter | 06,11 | todo |
+
+## Frontend workload (separate tree)
+
+The **premium web UI** is tracked in its own subtree, [`frontend/backlog.md`](frontend/backlog.md) —
+30 frontend `work`/`flow` pairs (design system, system UX [errors/motion/loading/notifications],
+SDK expansion, per-feature pages & modals for work01–14, and cross-cutting polish). It executes the
+`feNN` backlog in [`../frontendfeature.md`](../frontendfeature.md) and consumes the backend services
+above. Foundation items (FE work01/02/18) are `done`; the rest are `todo`/`seeded`. Run `/work <nn>`
+against that tree to build a screen.
 
 ## Coverage vs backendfeatures.md (20 services)
 
@@ -528,3 +537,34 @@ never expands the active item ([scope.md](scope.md)).
   S3 cold-archive (>90d); harden intake with real mTLS/SPIFFE + live JWKS fetch; derive the GET response
   from `canonical_bytes` (defense-in-depth so the displayed value can't diverge from the hashed record);
   deeper reader RBAC (fresh-DB staff map like work11) vs the token-role check.
+- 2026-06-01 — work14 → **done**. `linkmint-backend/notification-service` shipped (Python 3.12 / FastAPI
+  **+ Celery/Redis** — the repo's first Celery service), mirroring the work01/12 layout. Multi-channel
+  delivery (SMS + email) of domain events: `NotificationEventConsumer.handle(name, payload)` (the work15
+  bus chokepoint) → `RecipientResolver` → fan out per a `TemplateRegistry` (locale→`en` fallback) →
+  `string.Template.safe_substitute` render → persist `notify.deliveries` (QUEUED) → enqueue Celery. The
+  worker's **pure, Celery-free `DeliveryRunner`** sends via a pluggable provider (console sandbox default;
+  Africa's Talking / SendGrid config-gated http drop-ins) and on failure persists FAILED + `next_retry_at`
+  then `self.retry(countdown=…)` on the **`30s/2m/10m/1h/6h` backoff (max 5)**; exhaustion → EXHAUSTED.
+  Postgres `notify.deliveries` is the durable system-of-record (attempts increment on failure only);
+  Celery `apply_async(countdown)` drives scheduling (Redis broker on DB **/1**, idempotency cache on /0).
+  `POST /v1/notifications` is the trusted-network intake / bus stand-in (X-Internal-Token, ADR-009),
+  Idempotency-Key honored, plus a per-event dedupe (so an at-least-once bus never double-sends);
+  `GET /internal/deliveries/{id}` reads a delivery (recipient **masked**). Owns the `notify` schema
+  (webhooks **forward-schema**, deliveries + the partial retry index, templates + 4 seeded `en` templates;
+  numbered Alembic). **PII (A.1):** the contact rides only the trusted intake call (`inline` resolver) —
+  never a durable bus payload, never logged raw (`mask_recipient` on every log line + the GET); the
+  `identity` resolver is the deferred PII-free path. Non-custodial — sends messages + writes a log only.
+  Standard error envelope, structlog + trace_id, healthz/readyz (db+redis+broker)/metrics. **78 tests,
+  95.7% cov** (unit + testcontainers-eager integration), ruff/black/mypy clean. **Spec is backendfeatures.md
+  §2.7** (work14.md/flow14.md/backlog row keep the doc-scheme `§2.18` label — same drift as work12's
+  §2.15→§2.6; README cites §2.7). Built **ahead of dep work15** via the typed `handle()` seam (the established
+  01/02/09–13 convention). **Verified live** via `docker compose up -d --wait` (notification-service + a
+  Celery worker, both healthy): paylink.verified intake → 201 (sms+email ids) → worker delivered → **SENT**
+  (delivered_at set, recipient masked `+254*****78` / `j***@…`); no-token → 401 envelope; re-POST same event
+  → same ids (dedupe, 2 rows only); readyz `{db,redis,broker:ok}`; worker logs carry **no raw PII/secrets**.
+  Wired into `docker-compose.yml` (`:8095` + `notification-worker`, default profile; broker Redis /1) + CI
+  (`notification-service` job). Deferred (follow-ups, not blocking): real Kafka/SQS subscriber calling
+  `handle()` (work15); a Celery-beat sweeper for orphaned QUEUED/FAILED rows via `deliveries_retry_idx`;
+  identity-service `/internal/contacts/{id}` endpoint for the PII-free resolver; `/v1/webhooks` CRUD + HMAC
+  webhook delivery + push (FCM) + circuit-breaker + public delivery-log API (Phase 2); per-vendor provider
+  creds + send rate limits.

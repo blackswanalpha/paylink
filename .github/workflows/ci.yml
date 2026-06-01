@@ -242,6 +242,29 @@ jobs:
       - name: test (unit + integration, 80% gate)
         run: pytest
 
+  # work14 — notification-service (Python/FastAPI + Celery/Redis). `pytest` runs unit + Celery-eager
+  # integration (testcontainers Postgres/Redis); the --cov-fail-under=80 gate (pyproject) needs the
+  # full suite. Console sandbox providers + inline resolver — no secrets, no live broker (eager mode).
+  notification-service:
+    name: notification-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: linkmint-backend/notification-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: linkmint-backend/notification-service/pyproject.toml
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - name: lint + format + types
+        run: ruff check . && black --check . && mypy .
+      - name: test (unit + integration, 80% gate)
+        run: pytest
+
   # API gateway (Kong, DB-less declarative). No app code to unit-test — validate the config.
   api-gateway:
     name: api-gateway

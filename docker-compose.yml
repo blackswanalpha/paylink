@@ -382,6 +382,76 @@ services:
       retries: 10
       start_period: 15s
 
+  # work14 — notification-service (Python/FastAPI + Celery/Redis). Multi-channel delivery (SMS/email
+  # via sandbox console providers) of domain events: template render → durable delivery log → retry
+  # with exponential backoff (30s/2m/10m/1h/6h, max 5). POST /v1/notifications is the work15 bus
+  # stand-in (X-Internal-Token, ADR-009); the GET reads a delivery (recipient masked). Owns the
+  # `notify` schema. Webhooks/push are Phase 2. The Celery broker is a DEDICATED Redis DB (/1) so it
+  # never collides with the idempotency cache (/0). The web container runs migrations on start.
+  notification-service:
+    build:
+      context: ./linkmint-backend/notification-service
+    environment:
+      NOTIFY_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
+      NOTIFY_REDIS_URL: redis://redis:6379/0
+      NOTIFY_CELERY_BROKER_URL: redis://redis:6379/1
+      NOTIFY_SMS_PROVIDER: console
+      NOTIFY_EMAIL_PROVIDER: console
+      NOTIFY_RECIPIENT_RESOLVER: inline
+      # Intake gate (ADR-009). Trusted callers / the future work15 bus subscriber send this token.
+      NOTIFY_INTERNAL_SHARED_SECRET: devnet-internal-token
+      NOTIFY_LOG_LEVEL: INFO
+    ports:
+      - "8095:8095"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8095/internal/readyz').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
+  # work14 — notification-worker: the Celery worker (SAME image) that runs deliveries + backoff
+  # retries. Waits for notification-service to be healthy (it applies the migrations) before consuming
+  # the `notify` queue from the Redis broker (DB /1).
+  notification-worker:
+    build:
+      context: ./linkmint-backend/notification-service
+    entrypoint: ["./worker-entrypoint.sh"]
+    # The worker has no HTTP surface — replace the image's inherited web healthcheck with a Celery
+    # worker ping (over the Redis broker) so `up --wait` can gate on it.
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "celery -A app.celeryapp.app:celery_app inspect ping -d celery@$$(hostname) >/dev/null 2>&1 || exit 1"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    environment:
+      # The worker uses the DB + the Celery broker only (no idempotency cache → no NOTIFY_REDIS_URL).
+      NOTIFY_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
+      NOTIFY_CELERY_BROKER_URL: redis://redis:6379/1
+      NOTIFY_SMS_PROVIDER: console
+      NOTIFY_EMAIL_PROVIDER: console
+      NOTIFY_RECIPIENT_RESOLVER: inline
+      NOTIFY_LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+
   # work02 — payment lifecycle conductor (Go/chi). Reacts to lVM chain events and reconciles
   # against on-chain truth (read-through RPC + WS). The chain devnet is `--profile e2e` only;
   # without it readyz reports the chain dep down (liveness/healthz stays up). With `--profile e2e`
