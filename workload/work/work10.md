@@ -2,7 +2,7 @@
 
 > **Seeded** — expand with `/work 10` when picked up.
 
-- **Status:** todo · **Owner:** service-builder · **Stack:** Python/FastAPI · **Depends on:** 09 · **Flow:** [flow10](../flow/flow10.md)
+- **Status:** done · **Owner:** service-builder · **Stack:** Python/FastAPI · **Depends on:** 09 · **Flow:** [flow10](../flow/flow10.md)
 - **Phase:** 1 / MVP (Kenya manual) · **Spec:** backendfeatures.md §2.3
 
 ## Goal
@@ -27,10 +27,10 @@ contract acceptance, and fee-tier assignment, with the DRAFT→PENDING_VERIFICAT
 - work01 Python/FastAPI layout; work09 auth/RBAC; S3 for documents; event bus (work15).
 
 ## Acceptance criteria
-- [ ] Onboard → upload docs → add+verify bank account → accept contract → ACTIVE.
-- [ ] Bank refs stored KMS-encrypted; state transitions enforced; `merchant.*` events emitted.
-- [ ] Tests ≥80%; lint/build clean.
-- [ ] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] Onboard → upload docs → add+verify bank account → accept contract → ACTIVE.
+- [x] Bank refs stored KMS-encrypted; state transitions enforced; `merchant.*` events emitted.
+- [x] Tests ≥80%; lint/build clean.
+- [x] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service (Python/FastAPI)" + "Full stack".

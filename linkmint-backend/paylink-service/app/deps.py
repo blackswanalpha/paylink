@@ -35,6 +35,7 @@ async def get_service(request: Request) -> AsyncIterator[PayLinkService]:
             nonces=request.app.state.nonces,
             publisher=request.app.state.publisher,
             settings=request.app.state.settings,
+            compliance=request.app.state.compliance_client,
         )
 
 
@@ -48,8 +49,18 @@ def caller_address(
     return (x_creator_addr or signer_addr).lower()
 
 
+def caller_user_id(
+    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+) -> str | None:
+    """Auth seam (work05/work12): the gateway injects the authenticated user id (JWT ``sub``) so the
+    compliance gate can evaluate KYC by user. Mirrors the X-Creator-Addr seam; ``None`` in pure-dev
+    calls (the gate then skips). Distinct from caller_address (the on-chain address)."""
+    return x_user_id
+
+
 # Common annotated dependencies.
 ServiceDep = Depends(get_service)
 SettingsDep = Depends(get_settings)
 IdempotencyDep = Depends(get_idempotency)
 CallerDep = Depends(caller_address)
+CallerUserDep = Depends(caller_user_id)

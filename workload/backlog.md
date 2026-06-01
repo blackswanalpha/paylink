@@ -23,14 +23,14 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 18 | [work18](work/work18.md) / [flow18](flow/flow18.md) | Observability (OTel tracing + Prometheus + logs) | infra | — | todo |
 | 09 | [work09](work/work09.md) / [flow09](flow/flow09.md) | 2.2 Identity service | Python/FastAPI | 15,16,17 | done |
 | 01 | [work01](work/work01.md) / [flow01](flow/flow01.md) | 2.5 PayLink service | Python/FastAPI | 15,16 | done |
-| 10 | [work10](work/work10.md) / [flow10](flow/flow10.md) | 2.3 Merchant onboarding | Python/FastAPI | 09 | todo |
-| 11 | [work11](work/work11.md) / [flow11](flow/flow11.md) | 2.4 Admin backoffice (read-only) | Python/FastAPI | 09 | todo |
+| 10 | [work10](work/work10.md) / [flow10](flow/flow10.md) | 2.3 Merchant onboarding | Python/FastAPI | 09 | done |
+| 11 | [work11](work/work11.md) / [flow11](flow/flow11.md) | 2.4 Admin backoffice (read-only) | Python/FastAPI | 09 | done |
 | 05 | [work05](work/work05.md) / [flow05](flow/flow05.md) | 2.1 API gateway | Kong (ADR-008) | 09,01 | done |
 | 02 | [work02](work/work02.md) / [flow02](flow/flow02.md) | 2.10 Payment orchestrator | Go/chi | 01,04,14 | done |
 | 03 | [work03](work/work03.md) / [flow03](flow/flow03.md) | 2.11 Proof validator | Go/chi | 02 | done |
 | 04 | [work04](work/work04.md) / [flow04](flow/flow04.md) | 2.14 MPesa adapter | Go core + Node rail | 03 | done |
-| 12 | [work12](work/work12.md) / [flow12](flow/flow12.md) | 2.15 Compliance-risk (basic KYC) | Python/FastAPI | 09 | todo |
-| 13 | [work13](work/work13.md) / [flow13](flow/flow13.md) | 2.17 Audit-log service | Go/chi | 15,16 | todo |
+| 12 | [work12](work/work12.md) / [flow12](flow/flow12.md) | 2.15 Compliance-risk (basic KYC) | Python/FastAPI | 09 | done |
+| 13 | [work13](work/work13.md) / [flow13](flow/flow13.md) | 2.17 Audit-log service | Go/chi | 15,16 | done |
 | 14 | [work14](work/work14.md) / [flow14](flow/flow14.md) | 2.18 Notification (SMS/email) | Python/FastAPI | 15 | todo |
 | 08 | [work08](work/work08.md) / [flow08](flow/flow08.md) | docker-compose + CI (incremental) | infra | 01–14 | done |
 | 35 | [work35](work/work35.md) / [flow35](flow/flow35.md) | fix: orchestrator rejects payable (PENDING) PayLinks | Go/chi | 01,02 | todo |
@@ -377,3 +377,154 @@ never expands the active item ([scope.md](scope.md)).
   WebAuthn/SMS-OTP MFA + OAuth `state` CSRF + Apple id_token sig verification + real-creds OAuth
   verification (Phase 2); real Kafka/SQS transport + kyc consumer wiring (work15/16). Repo commit:
   feature branch, attributed to the owner (no bot trailer); not pushed (awaiting confirmation).
+- 2026-05-31 — work10 → **done**. `linkmint-backend/merchant-onboarding` shipped (Python 3.12 /
+  FastAPI), mirroring the work01/09 reference layout. Full `/v1/merchants` API: `onboard`,
+  `{id}/documents` (multipart), `{id}/bank-accounts(+/{bid}/verify)`, `{id}/contracts` (GET/POST),
+  `{id}/fee-tier` (GET/PATCH admin), `GET {id}`. **State machine** DRAFT→PENDING_VERIFICATION→
+  ACTIVE|REJECTED|SUSPENDED via a single guarded `MerchantsService.decide()` chokepoint, with
+  **activation preconditions** (≥1 VERIFIED bank + ≥1 accepted contract, env-gated). Owns the
+  `merchant` Postgres schema (4 tables + `merchant_events` outbox; numbered Alembic migration; no
+  cross-schema FKs — `org_id`/`accepted_by` are opaque UUIDs). **Non-custodial / KMS:** bank
+  `account_details` are AES-256-GCM-encrypted to `account_ref` immediately (the `MfaCipher` model);
+  plaintext never lands in the DB, logs, responses, events, or the idempotency cache (verified live).
+  **JWT consumer** (verify-only, RS256, alg-confusion guard); **RBAC sourced from token claims** —
+  the deliberate divergence from identity's fresh-DB memberships (one schema, no cross-schema FK;
+  the RS256 signature is the trust anchor). Publishes `merchant.*` via the LogPublisher seam +
+  in-tx outbox (→work15); consumes `compliance.kyb.*` / `admin.override.*` via the
+  `MerchantEventConsumer` seam, which (with the internal `POST /internal/merchants/{id}/decision`
+  manual-review endpoint) drives the same `decide()` path so work11/work15 reuse it. **S3 deferred**
+  via an `ObjectStore` seam (LocalObjectStore default; S3 lazy-boto3 follow-up); docs store only the
+  `s3_key`, `MERCHANT_MAX_DOCUMENT_BYTES`→413. Standard error envelope, structlog + trace_id,
+  Idempotency-Key (Redis 24h; bank `account_details` excluded from fingerprint + cached body),
+  healthz/readyz/metrics. **95.8% coverage, 94 tests** (unit + testcontainers integration),
+  ruff/black/mypy clean. **Invariant audit PASS** (A.1 non-custodial defense-in-depth; A.2–A.8 N/A;
+  secrets/determinism/`any` clean). **Code review** (high) — fixed one robustness gap (consumer
+  no-ops a malformed `merchant_id` instead of raising). **Verified live** via `docker compose up`
+  (merchant-onboarding healthy): onboard→PENDING_VERIFICATION, dup→409, approve-before-prereqs→409,
+  doc upload(+413), bank add→PENDING_VERIFY→verify→VERIFIED, contract, `/internal` approve→ACTIVE,
+  no-bearer→401; DB shows ciphertext `account_ref` (0 plaintext rows) + 5 `merchant.*` events. Wired
+  into `docker-compose.yml` (`:8091`, default profile, shared `merchant` schema) with a **shared dev
+  RSA keypair** pinned across identity-service (`IDENTITY_JWT_PRIVATE_KEY_PEM`) + merchant
+  (`MERCHANT_JWT_PUBLIC_KEY_PEM`) so a real identity token verifies end-to-end; + CI
+  (`merchant-onboarding` job). Built **ahead of deps 15/16** via seams (event publisher + outbox →
+  work15; no ledger coupling — non-custodial → work16). Deferred (follow-ups, not blocking): live
+  JWKS fetch replacing the static-key pinning (gateway/ADR-008 convention); real bank-verification
+  adapters (micro-deposit/MPesa B2B name-match) + per-rail `account_details` validation; S3
+  object-store backend; streaming upload size-guard (gateway caps body today); work21 fee-pricing
+  consumes the `fee_tier`.
+- 2026-06-01 — work11 → **done**. `linkmint-backend/admin-backoffice` shipped (Python 3.12 /
+  FastAPI), the read-only internal ops console (Phase 1, spec §2.18). `GET /v1/admin/search?q=`
+  (unified search across users/merchants/PayLinks/payments) + `GET /v1/admin/{users,merchants,
+  paylinks,payments}/{id}` drill-down views. **AuthZ:** verifier-only RS256 JWT (alg-confusion
+  guard) gated on **admin role + MFA + a default-deny scope** (`require_admin("support.read")`);
+  the staff→scope map is owned locally in `admin.staff` (∪ `ADMIN_DEV_STAFF_GRANTS` for dev) — scopes
+  are NEVER read from the token. **Audit by construction:** the search/entity services are the only
+  call sites and each emits one structured `audit` line (the **work13 drop-in** via `AuditSink`).
+  **Read-through aggregation:** every entity is fetched over HTTP from its owning service's
+  `/internal/admin` endpoint (no cross-schema DB reads); the search fan-out runs each provider under
+  a timeout and **degrades gracefully** (one upstream down ⇒ `degraded:[...]`, still 200). Owns a
+  thin `admin` schema (`staff` Phase-1 + Phase-2 `feature_flags`/`announcements`; numbered Alembic;
+  no cross-schema FK — `staff.sub` opaque). **Upstream additions (this work item):** identity-service
+  now emits `mfa`/`amr` + per-membership org `type` in its RS256 token (login-with-TOTP only;
+  refresh/OAuth ⇒ `mfa=false`) and exposes `/internal/admin/users/{id}`+`?q=`; merchant-onboarding
+  exposes `/internal/admin/merchants/{id}`+`?q=` (org-RBAC bypassed for platform admin; `account_ref`
+  never returned); payment-orchestrator (Go) adds `Store.SearchPayments` + `/internal/admin/payments`.
+  Recorded **ADR-009** (trusted-internal-network `/internal/admin` surface). **95.5% coverage, 50
+  tests** (unit + testcontainers integration), ruff/black/mypy clean; identity (95 tests) + merchant
+  (100 tests) + payment-orchestrator (go test/vet/gofmt) stay green. **Invariant audit PASS**
+  (read-only/non-custodial; A.2–A.8 N/A; least-privilege RBAC + full audit coverage; no secrets/PII
+  leak). **Security review: ship** — fixed LIKE-wildcard escaping in the search repos; one tracked
+  follow-up below. Wired into `docker-compose.yml` (`:8092`, default profile, shared `admin` schema,
+  reuses the pinned dev RSA public key so identity-minted MFA tokens verify) + CI (`admin-backoffice`
+  job). Built **ahead of dep work13** via the `AuditSink` seam. Deferred (follow-ups, not blocking):
+  (a) **harden the `/internal/admin` surface** — today it relies only on the network boundary (the
+  established work10/work02 trusted-network precedent, documented in ADR-009 + asserted "never
+  gateway-exposed"); add mTLS or a shared service token, or enforce a hard NetworkPolicy. (b)
+  defense-in-depth response allowlist on the entity view (today it trusts upstream redaction). (c)
+  batch the per-membership org lookup in identity `_roles` (N+1 on login). (d) live JWKS fetch
+  replacing static-key pinning; (e) Phase-2 mutations (suspend/force-refund/resolve/feature-flags +
+  dual-approval) per spec §2.18.
+- 2026-06-01 — work12 → in-progress: building `linkmint-backend/compliance-risk` (Python/FastAPI),
+  mirroring the work01/09/10/11 reference layout. KYC tiers (0..2) + a deterministic
+  `/v1/risk/evaluate` decision (allow/block/review) over tier/velocity/amount-ceiling/geo + the Kenya
+  AML threshold (KES 150k cumulative); owns the `compliance` schema; publishes `compliance.kyc.*`/
+  `compliance.check.*`/`compliance.flag.raised` (LogPublisher seam → work15). Per the owner: **wire
+  paylink now** (work01 calls `/v1/risk/evaluate` above threshold → `402 KYC_REQUIRED` on block, Flow
+  E) + internal endpoint = **trusted-network + optional `X-Internal-Token`** (ADR-009). Spec is §2.6
+  (work12.md's "§2.15" is a stale ref — §2.15 is fraud-detection).
+- 2026-06-01 — work12 → **done**. `linkmint-backend/compliance-risk` shipped (Python 3.12 / FastAPI),
+  mirroring the work01/09/10/11 layout. `/v1` surface: `POST /v1/kyc/sessions` (JWT, idempotent),
+  `POST /v1/kyc/callbacks/{provider}` (HMAC-SHA256 over the **raw body**, constant-time, `sha256=`
+  tolerated), `GET /v1/compliance/status` (JWT, self-or-admin), and internal `POST /v1/risk/evaluate`
+  (trusted-network + optional constant-time `X-Internal-Token`, ADR-009). **Deterministic, pure,
+  table-tested risk engine**: KYC tier (0/1/2) + velocity (1h/24h/7d) + amount-vs-tier-ceiling + geo-IP
+  + the **Kenya AML threshold** (KES 150k cumulative / 30d) → `{decision: allow|block|review, score,
+  reasons[]}` (hard rules LOW_KYC / AML_THRESHOLD / AMOUNT_OVER_TIER_CEILING + weighted soft signals;
+  block≥0.8, review≥0.5). Owns the `compliance` schema (kyc_records, risk_scores, flags, activity_events,
+  compliance_events outbox; numbered Alembic; no cross-schema FKs). **Non-custodial / PII (A.1):** an
+  allowlist `redaction.redact()` runs before any write/log/emit (raw PII never lands in
+  `kyc_records.documents`/logs/events), `provider_ref` is AES-256-GCM at rest; event payloads carry
+  ids/tier/decision/reasons only. **JWT consumer** (RS256-only, alg-confusion guard, requires `exp`);
+  publishes `compliance.kyc.*`/`compliance.check.*`/`compliance.flag.raised` via the LogPublisher seam +
+  in-tx outbox (→work15) — `compliance.kyc.passed` pinned to identity's `KycConsumer` shape
+  `{user_id, tier}`. Pluggable KYC provider (stub default + http drop-in + registry). **133 tests,
+  94.97% cov** (unit + testcontainers integration), ruff/black/mypy clean. **work01 wired now (owner
+  choice — Flow E):** paylink-service `create()` synchronously calls `/v1/risk/evaluate` above
+  `amount_kyc_threshold` and returns **402 KYC_REQUIRED** on a `block` *before* any row/chain tx (the
+  reserved `errors.py` seam is now live); added `app/compliance/client.py`, an `X-User-Id` gateway seam,
+  fail-**closed** default on a compliance outage; paylink stays green (94 tests, 95.3% cov). **Invariant
+  audit PASS** on all 8. **Security review** (2nd lens): no Critical/High — **fixed** the one **Medium**
+  (bounded `/v1/risk/evaluate` inputs so a negative `amount` can't defeat LOW_KYC/AML + capped strings)
+  and a **Low** (JWT now requires `exp`); both locked with tests. **Verified live** via `docker compose
+  up` (compliance-risk healthy `:8093`): risk/evaluate 401-without-token / tier-0 block (4 reasons) /
+  allow; **Flow E end-to-end** — above-threshold create for a tier-0 user → 402 KYC_REQUIRED with the
+  compliance reasons in the envelope; full KYC lifecycle — identity login → kyc/sessions → signed
+  callback (200) / bad-HMAC (401) → status tier 2 → the same user/amount that blocked at tier 0 now
+  **allows** at tier 2; logs carry no secrets/PII. Wired into `docker-compose.yml` (`:8093`, default
+  profile, shared `compliance` schema + the pinned dev RSA public key; paylink gets `PAYLINK_COMPLIANCE_*`
+  + `depends_on`) + CI (`compliance-risk` job). Spec is **§2.6**. Deferred (follow-ups, not blocking):
+  gateway (Kong) must inject `X-User-Id` from the JWT `sub` so the gate is live through the front door
+  (today the gate exercises only on a direct call with the header; through Kong it no-ops); real
+  Kafka/SQS transport draining the outbox (work15/16); real KYC vendor + per-vendor callback parsing;
+  callback body-size cap at ingress; live JWKS fetch replacing static-key pinning; cross-currency/minor-
+  unit normalization (paylink PLN minor-units ↔ compliance KES); Phase-2 sanctions/KYB/ML
+  (`FlagKind.SANCTIONS` reserved, unused).
+- 2026-06-01 — work13 → **done**. `linkmint-backend/audit-log-service` shipped (Go 1.25 / chi / pgx /
+  go-redis), mirroring the work02/03 Go/chi reference layout. Append-only, **tamper-evident hash
+  chain** (`entry_hash = SHA256(prev_hash || canonical_json(entry))`, genesis = 32 zero bytes) — the
+  system of record for "who did what when" (spec §2.17, Phase 1). `/v1` surface: **POST /v1/audit-log**
+  (internal intake, ADR-009 `X-Internal-Token` mTLS stand-in), **GET /v1/audit-log** (cursor-paginated,
+  actor/resource/from/to filters), **GET /v1/audit-log/{id}** (entry + linear-chain inclusion proof,
+  404), **GET /v1/audit-log/verify?from=&to=** (`{ok, broken_at?}`). **Determinism**: canonical JSON
+  via sorted-key `map` marshal + `json.Decoder.UseNumber()` (preserves number lexemes past 2^53) +
+  UTC µs-truncated RFC3339 timestamps. **Append serialized** by `pg_advisory_xact_lock` (chain can't
+  fork; `entry_id` is `GENERATED ALWAYS AS IDENTITY`); production store is INSERT/SELECT-only.
+  **Integrity is normalization-proof**: stores the exact hashed serialization in `canonical_bytes` and
+  verify recomputes from it (not from the jsonb columns), so float/exponent payloads — e.g. compliance
+  risk scores — don't false-positive (the fix for the code-review's headline finding; regression-tested).
+  Owns the `audit` schema (`entries` + Phase-2 `anchors` forward schema; embedded numbered migration).
+  **Reads verify identity RS256 in-service** (stdlib `crypto/rsa`, alg-confusion + `nbf`/`exp`/`iss`/`aud`
+  guards, admin/compliance role; config-gated → gateway-trust fallback when no key). Idempotency-Key
+  **honored-when-present** (Redis 24h) but **not required** (an audit signal is never dropped for a
+  missing header — documented divergence from the orchestrator's hard-require). Standard error envelope,
+  slog + correlation id, healthz/readyz/metrics. NATS `audit.intake` consumer + `audit.*` events
+  (`audit.entry.added`/`audit.verification.failed`) are work15 seams (LogPublisher + `intake.NoopSource`).
+  **84–85% combined coverage** (unit + testcontainers integration; `make cover` covdata-safe per-package),
+  go build/vet/gofmt clean. **work11 wired now (owner choice):** admin-backoffice gained an `HttpAuditSink`
+  selected by `ADMIN_AUDIT_SINK_MODE=http` (best-effort, bounded-timeout — an audit outage never breaks an
+  admin read), closing the work11 `AuditSink` seam end-to-end; admin stays green (55 tests, 95.7% cov,
+  ruff/black/mypy clean). **Invariant audit PASS** (A.1 non-custodial — records only; append-only;
+  determinism; secrets/`any` clean). **Code-review (high)**: fixed the headline jsonb-number false-positive
+  via `canonical_bytes`; added the `nbf` check + startup gate/chain-head logs; cleanup findings consciously
+  deferred. Recorded **ADR-010** (canonical_bytes authoritative + deliberate PII retention + bare-string
+  actor shim). **Verified live** via `docker compose up` (audit-log-service healthy `:8094`): intake 401
+  without token / 201 with; bare-string actor + null context (the admin-sink shape) accepted; GET 401
+  without bearer / 403 wrong role / 200 + `proof.valid` with a real identity admin token; verify ok→
+  `broken_at` after a `psql` `canonical_bytes` tamper. Wired into `docker-compose.yml` (`:8094`, default
+  profile, shared `audit` schema + the pinned dev RSA public key; admin gets `ADMIN_AUDIT_*` + depends_on)
+  + CI (`audit-log-service` job). Built **ahead of deps 15/16** via seams (work16 ledger N/A — non-custodial).
+  Deferred (follow-ups, not blocking): real NATS `audit.intake` + Kafka/SQS event transport (work15);
+  Phase-2 nightly on-chain `TxAuditAnchor` anchoring + Merkle proofs + crypto-shred erasure story; Phase-3
+  S3 cold-archive (>90d); harden intake with real mTLS/SPIFFE + live JWKS fetch; derive the GET response
+  from `canonical_bytes` (defense-in-depth so the displayed value can't diverge from the hashed record);
+  deeper reader RBAC (fresh-DB staff map like work11) vs the token-role check.

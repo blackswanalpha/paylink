@@ -90,15 +90,17 @@ class AuthService:
             raise AppError(ErrorCode.INVALID_CREDENTIALS, "invalid credentials")
         if user.status != UserStatus.ACTIVE:
             raise AppError(ErrorCode.USER_SUSPENDED, "account is not active")
+        mfa_satisfied = False
         if await self._mfa.is_required(user.user_id):
             if not mfa_code:
                 raise AppError(ErrorCode.MFA_REQUIRED, "MFA code required")
             if not await self._mfa.verify_login(user.user_id, mfa_code):
                 await self._record_failure(identifier)
                 raise AppError(ErrorCode.MFA_INVALID, "invalid MFA code")
+            mfa_satisfied = True
         await self._failed_login.reset(identifier)
         user.last_login_at = datetime.now(UTC)
-        return await self._sessions.issue(user, user_agent=user_agent, ip=ip)
+        return await self._sessions.issue(user, user_agent=user_agent, ip=ip, mfa=mfa_satisfied)
 
     async def refresh(
         self, refresh_token: str, *, user_agent: str | None, ip: str | None

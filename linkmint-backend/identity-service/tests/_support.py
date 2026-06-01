@@ -91,6 +91,17 @@ class FakeRepository:
     async def get_user_by_phone(self, phone: str) -> UserRow | None:
         return next((u for u in self.users.values() if u.phone == phone), None)
 
+    async def search_users(self, q: str, limit: int = 20) -> list[UserRow]:
+        ql = q.lower()
+        hits = [
+            u
+            for u in self.users.values()
+            if (u.email and ql in u.email.lower())
+            or (u.phone and ql in u.phone.lower())
+            or str(u.user_id) == q
+        ]
+        return sorted(hits, key=lambda u: u.created_at, reverse=True)[:limit]
+
     # ── oauth ──
     async def get_oauth_identity(self, provider: str, subject: str) -> OAuthIdentityRow | None:
         return self.oauth.get((provider, subject))

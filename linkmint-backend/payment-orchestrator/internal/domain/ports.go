@@ -37,6 +37,9 @@ type Store interface {
 	CreatePayment(ctx context.Context, p Payment) error
 	GetPayment(ctx context.Context, id string) (Payment, error)
 	GetPaymentByPayLink(ctx context.Context, paylinkID string) (Payment, error)
+	// SearchPayments returns payments matching an exact id/paylink_id or a status (read-only admin
+	// lookup, most-recent-first). It performs no chain reconcile — it is a cheap projection read.
+	SearchPayments(ctx context.Context, q string, limit int) ([]Payment, error)
 	// ApplyChainEvent atomically and idempotently advances the payment for ev.PayLinkID toward
 	// on-chain truth computed by project. Duplicate (PayLinkID, Seq) refs return changed=false
 	// without re-applying. Returns ErrNotFound when no payment exists for the paylink.

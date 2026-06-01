@@ -31,6 +31,10 @@ class UsersService:
         memberships = await self._repo.list_memberships_for_user(user_id)
         return [(str(m.org_id), m.role) for m in memberships]
 
+    async def search(self, q: str, limit: int = 20) -> list[UserRow]:
+        """Admin search by email/phone substring or exact user_id (internal-only surface)."""
+        return await self._repo.search_users(q, limit)
+
     async def update(self, user_id: uuid.UUID, *, email: str | None, phone: str | None) -> UserRow:
         user = await self.get(user_id)
         if email is not None and email != user.email:

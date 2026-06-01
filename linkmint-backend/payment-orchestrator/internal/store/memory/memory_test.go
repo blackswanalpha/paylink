@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,5 +132,41 @@ func TestReconcile(t *testing.T) {
 func TestPing(t *testing.T) {
 	if err := New().Ping(context.Background()); err != nil {
 		t.Fatalf("Ping: %v", err)
+	}
+}
+
+func TestSearchPayments(t *testing.T) {
+	s := New()
+	ctx := context.Background()
+	base := time.Now().UTC()
+	mk := func(id, pl string, status lifecycle.State, age time.Duration) {
+		if err := s.CreatePayment(ctx, domain.Payment{
+			ID: id, PayLinkID: pl, Rail: "mpesa", Status: status,
+			CreatedAt: base.Add(-age), UpdatedAt: base.Add(-age),
+		}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	mk("pay-1", "0xaaa", lifecycle.StateAwaitingPayment, 2*time.Hour)
+	mk("pay-2", "0xbbb", lifecycle.StateSettled, time.Hour)
+	mk("pay-3", "0xccc", lifecycle.StateAwaitingPayment, 30*time.Minute)
+
+	if got, _ := s.SearchPayments(ctx, "pay-2", 20); len(got) != 1 || got[0].ID != "pay-2" {
+		t.Fatalf("by id: %+v", got)
+	}
+	if got, _ := s.SearchPayments(ctx, "0xccc", 20); len(got) != 1 || got[0].ID != "pay-3" {
+		t.Fatalf("by paylink id: %+v", got)
+	}
+	// by status, case-insensitive, most-recent-first
+	awaiting := strings.ToLower(string(lifecycle.StateAwaitingPayment))
+	got, _ := s.SearchPayments(ctx, awaiting, 20)
+	if len(got) != 2 || got[0].ID != "pay-3" || got[1].ID != "pay-1" {
+		t.Fatalf("by status order: %+v", got)
+	}
+	if got, _ := s.SearchPayments(ctx, awaiting, 1); len(got) != 1 || got[0].ID != "pay-3" {
+		t.Fatalf("limit clamp: %+v", got)
+	}
+	if got, _ := s.SearchPayments(ctx, "no-such-thing", 20); len(got) != 0 {
+		t.Fatalf("no match: %+v", got)
 	}
 }

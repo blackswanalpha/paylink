@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1 import schemas
 from app.config import Settings
-from app.deps import caller_address, get_idempotency, get_service, get_settings
+from app.deps import caller_address, caller_user_id, get_idempotency, get_service, get_settings
 from app.domain.service import CreateCommand, PayLinkService
 from app.idempotency import IdempotencyStore, fingerprint
 
@@ -19,6 +19,7 @@ ServiceDep = Annotated[PayLinkService, Depends(get_service)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 IdemDep = Annotated[IdempotencyStore, Depends(get_idempotency)]
 CallerDep = Annotated[str, Depends(caller_address)]
+CallerUserDep = Annotated[str | None, Depends(caller_user_id)]
 IdemKey = Annotated[str | None, Header(alias="Idempotency-Key")]
 
 
@@ -29,6 +30,7 @@ async def create_paylink(
     settings: SettingsDep,
     idem: IdemDep,
     caller: CallerDep,
+    caller_user: CallerUserDep,
     idempotency_key: IdemKey = None,
 ) -> JSONResponse:
     fp = fingerprint(req.model_dump(mode="json"))
@@ -47,6 +49,7 @@ async def create_paylink(
         rules=req.rules,
         idem_key=idempotency_key,
         caller_addr=caller,
+        user_id=caller_user,
     )
     try:
         row = await service.create(cmd)

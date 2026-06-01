@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -100,7 +102,8 @@ func (s *Server) initiatePayment(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, view)
 }
 
-// getPayment handles GET /v1/payments/{id}. The response is reconciled against on-chain truth.
+// getPayment handles GET /v1/payments/{id} (and the internal-admin drill-down). The response is
+// reconciled against on-chain truth.
 func (s *Server) getPayment(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	p, err := s.svc.Get(r.Context(), id)
@@ -109,4 +112,39 @@ func (s *Server) getPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, toView(p))
+}
+
+// adminSearchPayments handles GET /internal/admin/payments?q=&limit= — the read-only admin lookup
+// (admin-backoffice, work11). It matches an exact payment id / paylink id / status; no reconcile.
+func (s *Server) adminSearchPayments(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		httpx.WriteError(w, r, httpx.NewError(httpx.CodeInvalidPayload, "q query parameter is required", nil))
+		return
+	}
+	payments, err := s.svc.Search(r.Context(), q, parseLimit(r.URL.Query().Get("limit"), 20, 100))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	views := make([]paymentView, 0, len(payments))
+	for _, p := range payments {
+		views = append(views, toView(p))
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": views})
+}
+
+// parseLimit parses a positive limit query param, clamped to max, falling back to def.
+func parseLimit(raw string, def, max int) int {
+	if raw == "" {
+		return def
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return def
+	}
+	if n > max {
+		return max
+	}
+	return n
 }

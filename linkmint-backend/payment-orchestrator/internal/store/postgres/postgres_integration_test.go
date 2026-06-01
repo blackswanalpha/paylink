@@ -150,6 +150,39 @@ func TestPostgresReconcile(t *testing.T) {
 	}
 }
 
+func TestPostgresSearchPayments(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	a := awaiting("66666666-6666-6666-6666-666666666666", "0xsearch1")
+	b := awaiting("77777777-7777-7777-7777-777777777777", "0xsearch2")
+	for _, p := range []domain.Payment{a, b} {
+		if err := s.CreatePayment(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// exact payment id
+	if got, err := s.SearchPayments(ctx, a.ID, 20); err != nil || len(got) != 1 || got[0].ID != a.ID {
+		t.Fatalf("by id: %+v err=%v", got, err)
+	}
+	// exact paylink id
+	if got, err := s.SearchPayments(ctx, "0xsearch2", 20); err != nil || len(got) != 1 || got[0].ID != b.ID {
+		t.Fatalf("by paylink: %+v err=%v", got, err)
+	}
+	// by status (case-insensitive) returns both
+	if got, err := s.SearchPayments(ctx, "awaiting_payment", 20); err != nil || len(got) != 2 {
+		t.Fatalf("by status: %+v err=%v", got, err)
+	}
+	// limit clamps
+	if got, err := s.SearchPayments(ctx, "AWAITING_PAYMENT", 1); err != nil || len(got) != 1 {
+		t.Fatalf("limit: %+v err=%v", got, err)
+	}
+	// no match (and a non-uuid q must not error via id::text cast)
+	if got, err := s.SearchPayments(ctx, "not-a-uuid", 20); err != nil || len(got) != 0 {
+		t.Fatalf("no match: %+v err=%v", got, err)
+	}
+}
+
 func TestPostgresPing(t *testing.T) {
 	if err := newStore(t).Ping(context.Background()); err != nil {
 		t.Fatalf("Ping: %v", err)

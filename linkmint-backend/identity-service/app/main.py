@@ -12,6 +12,7 @@ from prometheus_client import make_asgi_app
 from sqlalchemy import text
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.internal_admin import router as internal_admin_router
 from app.api.v1.organizations import router as organizations_router
 from app.api.v1.sessions import router as sessions_router
 from app.api.v1.users import router as users_router
@@ -81,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(users_router)
     app.include_router(organizations_router)
     app.include_router(sessions_router)
+    app.include_router(internal_admin_router)
 
     @app.get("/internal/healthz")
     async def healthz() -> dict[str, str]:

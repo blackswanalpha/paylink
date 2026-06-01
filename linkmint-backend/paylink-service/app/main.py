@@ -16,6 +16,7 @@ from app.api.v1.paylinks import router as paylinks_router
 from app.chain.client import ChainClient
 from app.chain.nonce import NonceManager
 from app.chain.signer import build_signer
+from app.compliance.client import ComplianceClient
 from app.config import Settings, get_settings
 from app.db.session import make_engine, make_sessionmaker
 from app.errors import install_error_handlers
@@ -40,12 +41,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.signer = build_signer(settings)
     app.state.nonces = NonceManager(app.state.chain_client)
     app.state.publisher = build_publisher(settings)
+    app.state.compliance_client = (
+        ComplianceClient(
+            settings.compliance_service_url,
+            app.state.http,
+            internal_token=(
+                settings.compliance_internal_token.get_secret_value()
+                if settings.compliance_internal_token
+                else None
+            ),
+            timeout=settings.compliance_timeout_seconds,
+        )
+        if settings.compliance_check_enabled
+        else None
+    )
 
     log.info(
         "startup",
         signer_address=app.state.signer.address,
         chain_rpc=settings.chain_rpc_url,
         chain_submit_enabled=settings.chain_submit_enabled,
+        compliance_check_enabled=settings.compliance_check_enabled,
     )
     try:
         yield

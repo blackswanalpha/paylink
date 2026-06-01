@@ -9,7 +9,7 @@ services to verify independently.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -22,6 +22,7 @@ from app.security.keys import KeyStore
 class OrgRole:
     org_id: str
     role: str
+    type: str | None = None  # org type (merchant|developer|admin), when the issuer includes it
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,8 @@ class AccessClaims:
     kyc_tier: int
     jti: str
     sid: str  # session id the token was minted for (marks the "current" session)
+    mfa: bool = False  # true iff MFA was satisfied at login (amr contains "mfa")
+    amr: list[str] = field(default_factory=list)  # auth methods (RFC 8176), e.g. ["pwd","mfa"]
 
 
 class JwtIssuer:
@@ -51,9 +54,15 @@ class JwtIssuer:
         user_roles: list[str],
         kyc_tier: int,
         sid: str = "",
+        mfa: bool = False,
         now: datetime | None = None,
     ) -> tuple[str, int]:
-        """Mint a signed access token. Returns ``(token, expires_in_seconds)``."""
+        """Mint a signed access token. Returns ``(token, expires_in_seconds)``.
+
+        ``mfa`` records whether the session was MFA-elevated at login; it surfaces as the ``mfa``
+        claim + an ``amr`` (RFC 8176) entry so downstream services (e.g. admin-backoffice) can gate
+        on step-up auth without re-querying identity. Refresh/OAuth flows mint ``mfa=False``.
+        """
         now = now or datetime.now(UTC)
         exp = now + timedelta(seconds=self._ttl)
         payload = {
@@ -65,9 +74,14 @@ class JwtIssuer:
             "exp": int(exp.timestamp()),
             "jti": uuid.uuid4().hex,
             "sid": sid,
-            "roles": [{"org_id": r.org_id, "role": r.role} for r in roles],
+            "roles": [
+                {"org_id": r.org_id, "role": r.role, **({"type": r.type} if r.type else {})}
+                for r in roles
+            ],
             "user_roles": user_roles,
             "kyc_tier": kyc_tier,
+            "mfa": mfa,
+            "amr": ["pwd", "mfa"] if mfa else ["pwd"],
         }
         token = jwt.encode(
             payload, self._keys.private_pem, algorithm="RS256", headers={"kid": self._keys.kid}
@@ -96,7 +110,11 @@ class JwtVerifier:
             raise AppError(ErrorCode.INVALID_TOKEN, "invalid access token") from exc
 
         roles = [
-            OrgRole(org_id=str(r["org_id"]), role=str(r["role"]))
+            OrgRole(
+                org_id=str(r["org_id"]),
+                role=str(r["role"]),
+                type=str(r["type"]) if r.get("type") else None,
+            )
             for r in payload.get("roles", [])
             if isinstance(r, dict) and "org_id" in r and "role" in r
         ]
@@ -107,4 +125,6 @@ class JwtVerifier:
             kyc_tier=int(payload.get("kyc_tier", 0)),
             jti=str(payload.get("jti", "")),
             sid=str(payload.get("sid", "")),
+            mfa=bool(payload.get("mfa", False)),
+            amr=[str(x) for x in payload.get("amr", [])],
         )

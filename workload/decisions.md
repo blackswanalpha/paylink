@@ -179,3 +179,75 @@ Format:
   phase needs WAF / declarative quotas / a dev portal, Kong Enterprise (`openid-connect`,
   `exit-transformer`) drops in without changing the `/v1` contract or the envelope. (7)
   `standard.md`'s ADR-003 api-gateway row is annotated to point here.
+
+## ADR-009 — admin/internal read endpoints are gateway-internal (trusted-network), bypassing tenant RBAC
+- **Status:** Accepted (work11)
+- **Date:** 2026-06-01
+- **Context:** work11 (admin-backoffice) is a read-only ops console that must read any tenant's
+  users / merchants / PayLinks / payments. The owning services either had no admin lookup
+  (identity user-by-id/search; payment search) or gated reads to org members (merchant
+  `GET /v1/merchants/{id}`), which a platform admin is not. `backendfeatures.md §2.18` mandates
+  read-through to other services' APIs — **no cross-schema DB reads**. So the console needs a read
+  surface on each service that a platform admin can call without being a member of the target org.
+- **Decision:** Add `/internal/admin/*` read endpoints on identity-service, merchant-onboarding,
+  and payment-orchestrator that (a) live OUTSIDE `/v1`, (b) carry **no** per-request JWT, and (c)
+  intentionally bypass tenant/org RBAC. They are reachable only over the internal network by
+  admin-backoffice, which has already verified the staff JWT + **MFA** + a **default-deny** scope
+  before calling — following the established merchant `/internal/{id}/decision` (work10) and
+  `payment-orchestrator → paylink-service` (work02) trusted-internal-network precedent. To make the
+  gate real, identity-service's RS256 access token now carries an `mfa`/`amr` marker (set only when
+  login used a verified TOTP; refresh/OAuth mint `mfa=false`) and the per-membership org `type`, so
+  the console authorizes statelessly. *Who* is staff and *which* scopes they hold is owned by
+  admin-backoffice (`admin.staff`, default-deny) — not by the upstream services.
+- **Consequences:** (1) These `/internal/*` ports MUST never be exposed through the public
+  api-gateway (it routes only `/v1/*`); each new router's docstring asserts the internal-only
+  contract. (2) The merchant org-RBAC bypass is deliberate and correct for a platform admin; the
+  responses still **redact secrets** — bank `account_ref`/plaintext is never returned, and the user
+  view exposes no password/MFA/refresh hashes. (3) The token additions (`mfa`/`amr`/org `type`) are
+  purely additive and backward-compatible (work10's verifier ignores unknown claims). (4) Every
+  console read is audited at a single chokepoint; when work13 (audit-log-service) lands, the
+  `LogAuditSink` becomes an `HttpAuditSink` with no call-site change. (5) Hardening the
+  trusted-network assumption (mTLS or a shared service token on `/internal/*`) can be layered on
+  later without changing the console — tracked as a backlog item. (6) The dev-keypair reuse for JWT
+  verification is already covered by the identity/merchant dev-fixture precedent (ADR-008 seam).
+
+## ADR-010 — audit-log-service: canonical_bytes are integrity-authoritative; the immutable log retains operational PII by design
+- **Status:** Accepted (work13)
+- **Date:** 2026-06-01
+- **Context:** work13 (audit-log-service, `backendfeatures.md §2.17`) is an append-only, tamper-evident
+  hash chain — the system of record for "who did what when". §2.17 specifies `entry_hash =
+  SHA256(prev_hash || canonical_json(entry))` and `before_state`/`after_state`/`context` as `jsonb`
+  columns. Two issues surface: (a) **verify must recompute byte-for-byte what append hashed**, but
+  Postgres `jsonb` normalizes numbers (`1e6`→`1000000`, scaled decimals), so re-canonicalizing from
+  the stored jsonb would falsely flag a clean entry as broken whenever a payload contains a
+  float/exponent — and this platform *does* produce floats (e.g. compliance risk scores). (b) An
+  audit log captures operational **PII** (actor IP / user-agent / search query in `context`, and
+  arbitrary `before`/`after` entity state) into a store whose whole value is that it is
+  **uneditable**, which collides with redaction/erasure expectations (compliance-risk by contrast
+  redacts-before-persist).
+- **Decision:** (1) Persist the exact hashed serialization in a `canonical_bytes BYTEA` column;
+  verify and proof recompute `SHA256(prev_hash || canonical_bytes)` from it and **never
+  re-canonicalize the jsonb columns** — making integrity normalization-proof for all payloads. The
+  `before/after/context` jsonb columns remain an indexed/queryable projection of the same input;
+  `canonical_bytes` is the integrity-authoritative record. (2) The log **intentionally retains
+  operational PII** in `context` (ip/ua/query/scopes) — that is the point of an audit trail.
+  Producers MUST NOT place raw secrets or regulated PII (card PAN, full KYC documents) into
+  `before/after`; they redact at the producer boundary (the compliance-risk allowlist pattern).
+  Data-subject erasure is handled by crypto-shredding / not capturing, never by row deletion
+  (append-only is the invariant). (3) Intake `actor` accepts `{id, kind}` (canonical) **or** a bare
+  JWT-sub string (mapped to `{kind:"user", id?}`) — a documented compat shim for the admin-backoffice
+  producer, which sends the sub as a string. (4) Reuse ADR-009: intake is gated by an optional
+  constant-time `X-Internal-Token` (mTLS stand-in); reads verify identity's RS256 token in-service
+  (config-gated, admin/compliance role) as defense-in-depth behind the gateway. The dev keypair /
+  fixture-token reuse follows the ADR-008/009 precedent.
+- **Consequences:** (1) `canonical_bytes` ~doubles the per-row payload storage — acceptable for an
+  audit log, and the exact hashed bytes are themselves forensic evidence. (2) A DB-level edit of the
+  *jsonb projection alone* (not `canonical_bytes`) is not flagged by verify, since the jsonb is a
+  denormalized view; the authoritative record (`canonical_bytes`/`entry_hash`/`prev_hash`) is what
+  integrity covers. A defense-in-depth follow-up could derive the GET response from `canonical_bytes`
+  so the displayed value can never diverge. (3) Floats are fully supported (regression-tested). (4)
+  PII retention is a deliberate, regulator-relevant choice recorded here so it is not mistaken for an
+  oversight; the erasure story (crypto-shred/anchor) is a Phase-2+ follow-up alongside on-chain
+  anchoring. (5) Phase-2 `TxAuditAnchor` on-chain anchoring and the NATS `audit.intake` consumer
+  (work15) drop in behind the existing `audit.anchors` schema and the `intake.Source` seam without
+  changing the chain or the producers.

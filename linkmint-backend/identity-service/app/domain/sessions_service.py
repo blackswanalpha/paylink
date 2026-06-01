@@ -46,13 +46,28 @@ class SessionsService:
 
     async def _roles(self, user_id: uuid.UUID) -> tuple[list[OrgRole], list[str]]:
         memberships = await self._repo.list_memberships_for_user(user_id)
-        roles = [OrgRole(org_id=str(m.org_id), role=m.role) for m in memberships]
+        roles: list[OrgRole] = []
+        for m in memberships:
+            # The org type (merchant|developer|admin) rides along in the token so consumers can tell
+            # an admin-org membership apart without a round-trip (admin-backoffice gates on it).
+            org = await self._repo.get_org(m.org_id)
+            roles.append(OrgRole(org_id=str(m.org_id), role=m.role, type=org.type if org else None))
         return roles, [UserRole.PAYER.value]
 
     async def issue(
-        self, user: UserRow, *, user_agent: str | None = None, ip: str | None = None
+        self,
+        user: UserRow,
+        *,
+        user_agent: str | None = None,
+        ip: str | None = None,
+        mfa: bool = False,
     ) -> AuthTokens:
-        """Create a session + mint access/refresh for ``user``. Commits all pending writes."""
+        """Create a session + mint access/refresh for ``user``. Commits all pending writes.
+
+        ``mfa`` marks the token as MFA-elevated (login with a verified TOTP code). ``rotate`` and
+        the OAuth path leave it False — re-authenticating with the second factor is required to
+        obtain an MFA-elevated token, which is the safe default for admin step-up.
+        """
         refresh = mint_refresh_token()
         sid = uuid.uuid4()
         session = SessionRow(
@@ -72,6 +87,7 @@ class SessionsService:
             user_roles=user_roles,
             kyc_tier=user.kyc_tier,
             sid=str(sid),
+            mfa=mfa,
         )
         await self._commit()
         return AuthTokens(access_token=access, refresh_token=refresh, expires_in=expires_in)
