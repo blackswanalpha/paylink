@@ -30,7 +30,7 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 03 | [work03](work/work03.md) / [flow03](flow/flow03.md) | 2.11 Proof validator | Go/chi | 02 | done |
 | 04 | [work04](work/work04.md) / [flow04](flow/flow04.md) | 2.14 MPesa adapter | Go core + Node rail | 03 | done |
 | 12 | [work12](work/work12.md) / [flow12](flow/flow12.md) | 2.15 Compliance-risk (basic KYC) | Python/FastAPI | 09 | done |
-| 13 | [work13](work/work13.md) / [flow13](flow/flow13.md) | 2.17 Audit-log service | Go/chi | 15,16 | todo |
+| 13 | [work13](work/work13.md) / [flow13](flow/flow13.md) | 2.17 Audit-log service | Go/chi | 15,16 | done |
 | 14 | [work14](work/work14.md) / [flow14](flow/flow14.md) | 2.18 Notification (SMS/email) | Python/FastAPI | 15 | todo |
 | 08 | [work08](work/work08.md) / [flow08](flow/flow08.md) | docker-compose + CI (incremental) | infra | 01–14 | done |
 | 35 | [work35](work/work35.md) / [flow35](flow/flow35.md) | fix: orchestrator rejects payable (PENDING) PayLinks | Go/chi | 01,02 | todo |
@@ -489,3 +489,42 @@ never expands the active item ([scope.md](scope.md)).
   callback body-size cap at ingress; live JWKS fetch replacing static-key pinning; cross-currency/minor-
   unit normalization (paylink PLN minor-units ↔ compliance KES); Phase-2 sanctions/KYB/ML
   (`FlagKind.SANCTIONS` reserved, unused).
+- 2026-06-01 — work13 → **done**. `linkmint-backend/audit-log-service` shipped (Go 1.25 / chi / pgx /
+  go-redis), mirroring the work02/03 Go/chi reference layout. Append-only, **tamper-evident hash
+  chain** (`entry_hash = SHA256(prev_hash || canonical_json(entry))`, genesis = 32 zero bytes) — the
+  system of record for "who did what when" (spec §2.17, Phase 1). `/v1` surface: **POST /v1/audit-log**
+  (internal intake, ADR-009 `X-Internal-Token` mTLS stand-in), **GET /v1/audit-log** (cursor-paginated,
+  actor/resource/from/to filters), **GET /v1/audit-log/{id}** (entry + linear-chain inclusion proof,
+  404), **GET /v1/audit-log/verify?from=&to=** (`{ok, broken_at?}`). **Determinism**: canonical JSON
+  via sorted-key `map` marshal + `json.Decoder.UseNumber()` (preserves number lexemes past 2^53) +
+  UTC µs-truncated RFC3339 timestamps. **Append serialized** by `pg_advisory_xact_lock` (chain can't
+  fork; `entry_id` is `GENERATED ALWAYS AS IDENTITY`); production store is INSERT/SELECT-only.
+  **Integrity is normalization-proof**: stores the exact hashed serialization in `canonical_bytes` and
+  verify recomputes from it (not from the jsonb columns), so float/exponent payloads — e.g. compliance
+  risk scores — don't false-positive (the fix for the code-review's headline finding; regression-tested).
+  Owns the `audit` schema (`entries` + Phase-2 `anchors` forward schema; embedded numbered migration).
+  **Reads verify identity RS256 in-service** (stdlib `crypto/rsa`, alg-confusion + `nbf`/`exp`/`iss`/`aud`
+  guards, admin/compliance role; config-gated → gateway-trust fallback when no key). Idempotency-Key
+  **honored-when-present** (Redis 24h) but **not required** (an audit signal is never dropped for a
+  missing header — documented divergence from the orchestrator's hard-require). Standard error envelope,
+  slog + correlation id, healthz/readyz/metrics. NATS `audit.intake` consumer + `audit.*` events
+  (`audit.entry.added`/`audit.verification.failed`) are work15 seams (LogPublisher + `intake.NoopSource`).
+  **84–85% combined coverage** (unit + testcontainers integration; `make cover` covdata-safe per-package),
+  go build/vet/gofmt clean. **work11 wired now (owner choice):** admin-backoffice gained an `HttpAuditSink`
+  selected by `ADMIN_AUDIT_SINK_MODE=http` (best-effort, bounded-timeout — an audit outage never breaks an
+  admin read), closing the work11 `AuditSink` seam end-to-end; admin stays green (55 tests, 95.7% cov,
+  ruff/black/mypy clean). **Invariant audit PASS** (A.1 non-custodial — records only; append-only;
+  determinism; secrets/`any` clean). **Code-review (high)**: fixed the headline jsonb-number false-positive
+  via `canonical_bytes`; added the `nbf` check + startup gate/chain-head logs; cleanup findings consciously
+  deferred. Recorded **ADR-010** (canonical_bytes authoritative + deliberate PII retention + bare-string
+  actor shim). **Verified live** via `docker compose up` (audit-log-service healthy `:8094`): intake 401
+  without token / 201 with; bare-string actor + null context (the admin-sink shape) accepted; GET 401
+  without bearer / 403 wrong role / 200 + `proof.valid` with a real identity admin token; verify ok→
+  `broken_at` after a `psql` `canonical_bytes` tamper. Wired into `docker-compose.yml` (`:8094`, default
+  profile, shared `audit` schema + the pinned dev RSA public key; admin gets `ADMIN_AUDIT_*` + depends_on)
+  + CI (`audit-log-service` job). Built **ahead of deps 15/16** via seams (work16 ledger N/A — non-custodial).
+  Deferred (follow-ups, not blocking): real NATS `audit.intake` + Kafka/SQS event transport (work15);
+  Phase-2 nightly on-chain `TxAuditAnchor` anchoring + Merkle proofs + crypto-shred erasure story; Phase-3
+  S3 cold-archive (>90d); harden intake with real mTLS/SPIFFE + live JWKS fetch; derive the GET response
+  from `canonical_bytes` (defense-in-depth so the displayed value can't diverge from the hashed record);
+  deeper reader RBAC (fresh-DB staff map like work11) vs the token-role check.

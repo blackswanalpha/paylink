@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.redis = aioredis.from_url(settings.redis_url, decode_responses=True)
     app.state.http_client = httpx.AsyncClient(timeout=settings.upstream_timeout_seconds)
     app.state.providers = build_registry(settings, app.state.http_client)
-    app.state.audit = build_audit_sink(settings)
+    app.state.audit = build_audit_sink(settings, app.state.http_client)
     app.state.jwt_verifier = JwtVerifier(
         _resolve_jwt_public_pem(settings),
         issuer=settings.jwt_issuer,

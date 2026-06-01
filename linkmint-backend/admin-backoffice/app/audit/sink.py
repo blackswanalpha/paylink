@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Protocol
 
+import httpx
+
 from app.config import Settings
 from app.logging import get_logger
 
@@ -52,7 +54,64 @@ class NoopAuditSink:
         return None
 
 
-def build_audit_sink(settings: Settings) -> AuditSink:
+class HttpAuditSink:
+    """POST each ``AuditRecord`` to audit-log-service (work13) ``/v1/audit-log`` — the real system
+    of record. Best-effort and bounded: a failed or slow emit logs a warning and returns; it never
+    raises, so an audit-log outage can never break a privileged read. The record is mapped to the
+    backendfeatures.md §2.17 intake shape — ``actor`` as the bare-string JWT sub (work13 maps it to
+    ``{id, kind:"user"}``), ``resource`` as ``<type>:<id>``, and the residual fields in ``context``.
+    """
+
+    def __init__(
+        self, client: httpx.AsyncClient, url: str, token: str | None, timeout: float
+    ) -> None:
+        self._client = client
+        self._url = url.rstrip("/") + "/v1/audit-log"
+        self._token = token
+        self._timeout = timeout
+
+    async def emit(self, record: AuditRecord) -> None:
+        resource = record.resource_type
+        if record.resource_id:
+            resource = f"{record.resource_type}:{record.resource_id}"
+        body = {
+            "actor": record.actor,  # bare-string sub; work13 maps to {id, kind:"user"}
+            "action": record.action,
+            "resource": resource,
+            "context": {
+                "trace_id": record.trace_id,
+                "ip": record.ip,
+                "user_agent": record.user_agent,
+                "query": record.query,
+                "actor_scopes": record.actor_scopes,
+                "result": record.result,
+            },
+        }
+        headers = {"X-Internal-Token": self._token} if self._token else None
+        try:
+            resp = await self._client.post(
+                self._url, json=body, headers=headers, timeout=self._timeout
+            )
+            if resp.status_code >= 400:
+                log.warning("audit_emit_failed", status=resp.status_code, action=record.action)
+        except httpx.HTTPError as exc:
+            log.warning("audit_emit_error", error=str(exc), action=record.action)
+
+
+def build_audit_sink(settings: Settings, client: httpx.AsyncClient | None = None) -> AuditSink:
     if settings.audit_sink_mode == "noop":
         return NoopAuditSink()
+    if settings.audit_sink_mode == "http":
+        if client is None:
+            log.warning(
+                "audit_sink_http_no_client",
+                detail="audit_sink_mode=http but no HTTP client provided; using LogAuditSink",
+            )
+            return LogAuditSink()
+        return HttpAuditSink(
+            client,
+            settings.audit_log_url,
+            settings.audit_internal_token,
+            settings.audit_emit_timeout_seconds,
+        )
     return LogAuditSink()

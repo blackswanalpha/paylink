@@ -237,7 +237,10 @@ services:
       ADMIN_JWT_ISSUER: linkmint-identity
       ADMIN_JWT_AUDIENCE: linkmint
       ADMIN_LOG_LEVEL: INFO
-      ADMIN_AUDIT_SINK_MODE: log
+      # work13 — emit every privileged access to audit-log-service (best-effort, bounded-timeout).
+      ADMIN_AUDIT_SINK_MODE: http
+      ADMIN_AUDIT_LOG_URL: http://audit-log-service:8094
+      ADMIN_AUDIT_INTERNAL_TOKEN: devnet-internal-token
       ADMIN_IDENTITY_SERVICE_URL: http://identity-service:8090
       ADMIN_MERCHANT_SERVICE_URL: http://merchant-onboarding:8091
       ADMIN_PAYLINK_SERVICE_URL: http://paylink-service:8000
@@ -263,6 +266,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # Ordering only — the http audit sink is best-effort, so admin never hard-blocks on audit.
+      audit-log-service:
+        condition: service_started
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -328,6 +334,53 @@ services:
       timeout: 5s
       retries: 10
       start_period: 25s
+
+  # work13 — audit-log-service (Go/chi). Append-only, tamper-evident hash chain that is the system
+  # of record for "who did what when" (entry_hash = SHA256(prev_hash || canonical_json(entry))).
+  # POST /v1/audit-log is internal intake (X-Internal-Token, ADR-009 mTLS stand-in — admin-backoffice
+  # sends the matching ADMIN_AUDIT_INTERNAL_TOKEN); the GET reads verify an identity RS256 token in
+  # service (AUDIT_JWT_PUBLIC_KEY_PEM is the public half of the FIXED dev keypair pinned on
+  # identity-service) and require an admin/compliance role. The NATS audit.intake consumer is a
+  # work15 seam (disabled). Owns the `audit` schema. Default profile — no chain dependency.
+  audit-log-service:
+    build:
+      context: ./linkmint-backend/audit-log-service
+    environment:
+      AUDIT_HTTP_ADDR: ":8094"
+      AUDIT_DATABASE_URL: postgres://paylink:paylink@postgres:5432/paylink?sslmode=disable
+      AUDIT_REDIS_URL: redis://redis:6379/0
+      # Intake gate (ADR-009). admin-backoffice sends the matching token on every emit.
+      AUDIT_INTERNAL_SHARED_SECRET: devnet-internal-token
+      AUDIT_JWT_ISSUER: linkmint-identity
+      AUDIT_JWT_AUDIENCE: linkmint
+      AUDIT_READER_ROLES: "admin,compliance"
+      AUDIT_LOG_LEVEL: INFO
+      # Dev-only public key matching identity-service's pinned private key (see identity note above).
+      AUDIT_JWT_PUBLIC_KEY_PEM: |-
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4ICsoMfDlpFGxfKDkwaO
+        CSicE31hGuzVJ5xSxfB1Ybl2yBg5pVMsOZ/Wg5xrW0Hiwi3Us7GWJowpLSCxizw7
+        dgmkrSmKbVU9z/q2nnJcb0gAWCKreBQ0AWS1K3onUXV2ACkp2fmRktpdTU9ZEkCm
+        dXcegWENBM4saL+UhFOHu0/U85ImhlqRxw+ccXwuq9V0GowWYjVGgUB0FOwd2wKY
+        XdgdirHZQ4w7MwJ4zyF3P/8g3+9mcuWRcLc3Onx7g2h7IcUp0rw9phOx/8bsGodw
+        FWx3y3ulTGriFc796lQb/7t8PZpYONULjPw6tABKVBC29hm4uh1M2Ab36UFrjZyV
+        DQIDAQAB
+        -----END PUBLIC KEY-----
+    ports:
+      - "8094:8094"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "wget -qO- http://localhost:8094/internal/healthz || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
   # work02 — payment lifecycle conductor (Go/chi). Reacts to lVM chain events and reconciles
   # against on-chain truth (read-through RPC + WS). The chain devnet is `--profile e2e` only;

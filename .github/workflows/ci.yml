@@ -59,6 +59,24 @@ jobs:
       - run: make build
       - run: make cover
 
+  # Audit-log service (work13, Go/chi). Standalone module (no chain `replace`). Its `make cover`
+  # profiles per-package (covdata-safe) and runs the integration tag (testcontainers postgres).
+  audit-log-service:
+    name: audit-log-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: linkmint-backend/audit-log-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: linkmint-backend/audit-log-service/go.sum
+      - run: make lint
+      - run: make build
+      - run: make cover
+
   # Proof validator (Go/chi). Module `replace`s ../../paylink-chain, so it needs the full-repo
   # checkout. Its `make cover` profiles per-package (covdata-safe) and runs the integration tag.
   proof-validator:

@@ -53,9 +53,14 @@ class Settings(BaseSettings):
     search_fanout_timeout_seconds: float = 4.0
     search_limit_default: int = 20
 
-    # ── Audit sink seam (real audit-log-service is work13). log = one structured JSON line per
-    # privileged access (the work13 drop-in); noop = tests. ──
-    audit_sink_mode: Literal["log", "noop"] = "log"
+    # ── Audit sink (real audit-log-service is work13). log = one structured JSON line per
+    # privileged access; noop = tests; http = POST each AuditRecord to audit-log-service
+    # /v1/audit-log (the work13 drop-in). The http sink is best-effort + bounded-timeout: an
+    # audit-log outage logs a warning, it never breaks an admin read. ──
+    audit_sink_mode: Literal["log", "noop", "http"] = "log"
+    audit_log_url: str = "http://localhost:8094"
+    audit_internal_token: str | None = None  # X-Internal-Token for the work13 intake gate (ADR-009)
+    audit_emit_timeout_seconds: float = 2.0
 
     # ── Authorization. Production grants live in ``admin.staff``; for local dev this CSV seeds
     # grants without touching the DB: "<sub>:scope,scope;<sub2>:scope". Default empty = locked. ──
