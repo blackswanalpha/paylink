@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from app.compliance.client import ComplianceUnavailable, RiskDecision
 from app.config import Settings
 from app.db.models import PayLinkRow
 from app.db.repository import decode_cursor, encode_cursor
@@ -55,6 +56,30 @@ class FakeChainClient:
 
     async def get_receipt(self, tx_hash: str) -> dict[str, Any] | None:
         return None
+
+
+class FakeComplianceClient:
+    """In-memory stand-in for the compliance-risk ``/v1/risk/evaluate`` client."""
+
+    def __init__(
+        self,
+        *,
+        decision: str = "allow",
+        score: float = 0.0,
+        reasons: list[dict[str, Any]] | None = None,
+        raise_unavailable: bool = False,
+    ) -> None:
+        self.decision = decision
+        self.score = score
+        self.reasons = reasons or []
+        self.raise_unavailable = raise_unavailable
+        self.calls: list[dict[str, Any]] = []
+
+    async def evaluate(self, **kwargs: Any) -> RiskDecision:
+        self.calls.append(kwargs)
+        if self.raise_unavailable:
+            raise ComplianceUnavailable("compliance down (test)")
+        return RiskDecision(decision=self.decision, score=self.score, reasons=self.reasons)
 
 
 class FakeRepository:

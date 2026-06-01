@@ -29,7 +29,7 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 02 | [work02](work/work02.md) / [flow02](flow/flow02.md) | 2.10 Payment orchestrator | Go/chi | 01,04,14 | done |
 | 03 | [work03](work/work03.md) / [flow03](flow/flow03.md) | 2.11 Proof validator | Go/chi | 02 | done |
 | 04 | [work04](work/work04.md) / [flow04](flow/flow04.md) | 2.14 MPesa adapter | Go core + Node rail | 03 | done |
-| 12 | [work12](work/work12.md) / [flow12](flow/flow12.md) | 2.15 Compliance-risk (basic KYC) | Python/FastAPI | 09 | todo |
+| 12 | [work12](work/work12.md) / [flow12](flow/flow12.md) | 2.15 Compliance-risk (basic KYC) | Python/FastAPI | 09 | done |
 | 13 | [work13](work/work13.md) / [flow13](flow/flow13.md) | 2.17 Audit-log service | Go/chi | 15,16 | todo |
 | 14 | [work14](work/work14.md) / [flow14](flow/flow14.md) | 2.18 Notification (SMS/email) | Python/FastAPI | 15 | todo |
 | 08 | [work08](work/work08.md) / [flow08](flow/flow08.md) | docker-compose + CI (incremental) | infra | 01–14 | done |
@@ -444,3 +444,48 @@ never expands the active item ([scope.md](scope.md)).
   batch the per-membership org lookup in identity `_roles` (N+1 on login). (d) live JWKS fetch
   replacing static-key pinning; (e) Phase-2 mutations (suspend/force-refund/resolve/feature-flags +
   dual-approval) per spec §2.18.
+- 2026-06-01 — work12 → in-progress: building `linkmint-backend/compliance-risk` (Python/FastAPI),
+  mirroring the work01/09/10/11 reference layout. KYC tiers (0..2) + a deterministic
+  `/v1/risk/evaluate` decision (allow/block/review) over tier/velocity/amount-ceiling/geo + the Kenya
+  AML threshold (KES 150k cumulative); owns the `compliance` schema; publishes `compliance.kyc.*`/
+  `compliance.check.*`/`compliance.flag.raised` (LogPublisher seam → work15). Per the owner: **wire
+  paylink now** (work01 calls `/v1/risk/evaluate` above threshold → `402 KYC_REQUIRED` on block, Flow
+  E) + internal endpoint = **trusted-network + optional `X-Internal-Token`** (ADR-009). Spec is §2.6
+  (work12.md's "§2.15" is a stale ref — §2.15 is fraud-detection).
+- 2026-06-01 — work12 → **done**. `linkmint-backend/compliance-risk` shipped (Python 3.12 / FastAPI),
+  mirroring the work01/09/10/11 layout. `/v1` surface: `POST /v1/kyc/sessions` (JWT, idempotent),
+  `POST /v1/kyc/callbacks/{provider}` (HMAC-SHA256 over the **raw body**, constant-time, `sha256=`
+  tolerated), `GET /v1/compliance/status` (JWT, self-or-admin), and internal `POST /v1/risk/evaluate`
+  (trusted-network + optional constant-time `X-Internal-Token`, ADR-009). **Deterministic, pure,
+  table-tested risk engine**: KYC tier (0/1/2) + velocity (1h/24h/7d) + amount-vs-tier-ceiling + geo-IP
+  + the **Kenya AML threshold** (KES 150k cumulative / 30d) → `{decision: allow|block|review, score,
+  reasons[]}` (hard rules LOW_KYC / AML_THRESHOLD / AMOUNT_OVER_TIER_CEILING + weighted soft signals;
+  block≥0.8, review≥0.5). Owns the `compliance` schema (kyc_records, risk_scores, flags, activity_events,
+  compliance_events outbox; numbered Alembic; no cross-schema FKs). **Non-custodial / PII (A.1):** an
+  allowlist `redaction.redact()` runs before any write/log/emit (raw PII never lands in
+  `kyc_records.documents`/logs/events), `provider_ref` is AES-256-GCM at rest; event payloads carry
+  ids/tier/decision/reasons only. **JWT consumer** (RS256-only, alg-confusion guard, requires `exp`);
+  publishes `compliance.kyc.*`/`compliance.check.*`/`compliance.flag.raised` via the LogPublisher seam +
+  in-tx outbox (→work15) — `compliance.kyc.passed` pinned to identity's `KycConsumer` shape
+  `{user_id, tier}`. Pluggable KYC provider (stub default + http drop-in + registry). **133 tests,
+  94.97% cov** (unit + testcontainers integration), ruff/black/mypy clean. **work01 wired now (owner
+  choice — Flow E):** paylink-service `create()` synchronously calls `/v1/risk/evaluate` above
+  `amount_kyc_threshold` and returns **402 KYC_REQUIRED** on a `block` *before* any row/chain tx (the
+  reserved `errors.py` seam is now live); added `app/compliance/client.py`, an `X-User-Id` gateway seam,
+  fail-**closed** default on a compliance outage; paylink stays green (94 tests, 95.3% cov). **Invariant
+  audit PASS** on all 8. **Security review** (2nd lens): no Critical/High — **fixed** the one **Medium**
+  (bounded `/v1/risk/evaluate` inputs so a negative `amount` can't defeat LOW_KYC/AML + capped strings)
+  and a **Low** (JWT now requires `exp`); both locked with tests. **Verified live** via `docker compose
+  up` (compliance-risk healthy `:8093`): risk/evaluate 401-without-token / tier-0 block (4 reasons) /
+  allow; **Flow E end-to-end** — above-threshold create for a tier-0 user → 402 KYC_REQUIRED with the
+  compliance reasons in the envelope; full KYC lifecycle — identity login → kyc/sessions → signed
+  callback (200) / bad-HMAC (401) → status tier 2 → the same user/amount that blocked at tier 0 now
+  **allows** at tier 2; logs carry no secrets/PII. Wired into `docker-compose.yml` (`:8093`, default
+  profile, shared `compliance` schema + the pinned dev RSA public key; paylink gets `PAYLINK_COMPLIANCE_*`
+  + `depends_on`) + CI (`compliance-risk` job). Spec is **§2.6**. Deferred (follow-ups, not blocking):
+  gateway (Kong) must inject `X-User-Id` from the JWT `sub` so the gate is live through the front door
+  (today the gate exercises only on a direct call with the header; through Kong it no-ops); real
+  Kafka/SQS transport draining the outbox (work15/16); real KYC vendor + per-vendor callback parsing;
+  callback body-size cap at ingress; live JWKS fetch replacing static-key pinning; cross-currency/minor-
+  unit normalization (paylink PLN minor-units ↔ compliance KES); Phase-2 sanctions/KYB/ML
+  (`FlagKind.SANCTIONS` reserved, unused).

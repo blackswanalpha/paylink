@@ -13,6 +13,7 @@ from app.chain.client import ChainClient
 from app.chain.mapping import ChainPayLink
 from app.chain.nonce import NonceManager
 from app.chain.signer import Signer
+from app.compliance.client import ComplianceClient, ComplianceUnavailable
 from app.config import Settings
 from app.db.models import PayLinkRow
 from app.domain import reconcile
@@ -36,6 +37,10 @@ class CreateCommand:
     rules: Any | None
     idem_key: str | None
     caller_addr: str
+    # Authenticated user id (JWT `sub`), gateway-injected via X-User-Id. Used only by the
+    # compliance gate; ``None`` in pure-dev calls (the gate then skips). Distinct from caller_addr
+    # (the on-chain address) — compliance keys on the identity user id.
+    user_id: str | None = None
 
 
 class Repository(Protocol):
@@ -65,6 +70,7 @@ class PayLinkService:
         nonces: NonceManager,
         publisher: Publisher,
         settings: Settings,
+        compliance: ComplianceClient | None = None,
     ) -> None:
         self._repo = repo
         self._commit = commit
@@ -73,6 +79,7 @@ class PayLinkService:
         self._nonces = nonces
         self._publisher = publisher
         self._settings = settings
+        self._compliance = compliance
 
     # ── create ──
     async def create(self, cmd: CreateCommand) -> PayLinkRow:
@@ -83,8 +90,10 @@ class PayLinkService:
         )
         md_hash = tx_builder.metadata_hash(cmd.metadata)
 
-        # SEAM (work12): compliance/KYC gate — when amount > threshold, a synchronous call to
-        # compliance-risk would gate creation (402 KYC_REQUIRED). Deferred; threshold is configured.
+        # work12 (Flow E): synchronous compliance/KYC gate. A `block` decision refuses creation with
+        # 402 KYC_REQUIRED before any row is written or chain tx submitted — compliance-risk records
+        # the audit flag itself, so no PayLink row exists for a blocked attempt.
+        await self._compliance_gate(cmd, pl_id)
 
         requested_payload = {
             "pl_id": pl_id,
@@ -126,6 +135,43 @@ class PayLinkService:
             await self._commit()
             await self._publisher.publish(ev.PAYLINK_CREATED, created_payload)
         return row
+
+    async def _compliance_gate(self, cmd: CreateCommand, pl_id: str) -> None:
+        """Gate above-threshold creation on compliance-risk (work12 / Flow E). Non-custodial — moves
+        no funds; only decides allow/block. Raises ``AppError(KYC_REQUIRED)`` (402) on a block."""
+        if self._compliance is None or not self._settings.compliance_check_enabled:
+            return
+        if cmd.amount <= self._settings.amount_kyc_threshold:
+            return
+        if not cmd.user_id:
+            # The gateway injects X-User-Id (JWT `sub`); without it KYC cannot be evaluated. Skip
+            # rather than block so dev/direct calls keep working (the gateway enforces it in prod).
+            log.warning("compliance_gate_skipped_no_user_id", pl_id=pl_id, amount=cmd.amount)
+            return
+        try:
+            decision = await self._compliance.evaluate(
+                user_id=cmd.user_id,
+                action="paylink.create",
+                amount=cmd.amount,
+                currency=cmd.currency,
+                context=f"paylink.create:{pl_id}",
+            )
+        except ComplianceUnavailable as exc:
+            if self._settings.compliance_fail_open:
+                log.warning("compliance_gate_degraded_fail_open", pl_id=pl_id, error=str(exc))
+                return
+            raise AppError(
+                ErrorCode.KYC_REQUIRED,
+                "compliance verification unavailable; above-threshold PayLink refused",
+                details={"reason": "compliance_unavailable"},
+            ) from exc
+        if decision.decision == "block":
+            log.info("compliance_gate_blocked", pl_id=pl_id, score=decision.score)
+            raise AppError(
+                ErrorCode.KYC_REQUIRED,
+                "PayLink creation blocked by compliance policy",
+                details={"score": decision.score, "reasons": decision.reasons},
+            )
 
     async def _submit_create(
         self,

@@ -37,8 +37,20 @@ class Settings(BaseSettings):
 
     # Domain defaults
     default_currency: str = "PLN"
-    # Minor-unit amount above which a future compliance/KYC gate (work12) would apply. Seam only.
+    # Minor-unit amount above which the compliance/KYC gate (work12) applies on create.
     amount_kyc_threshold: int = 100_000_000
+
+    # Compliance/KYC gate (work12). When enabled, a create whose amount exceeds
+    # ``amount_kyc_threshold`` is synchronously evaluated by compliance-risk; a ``block`` decision
+    # refuses creation with 402 KYC_REQUIRED before any row/chain tx (Flow E). The internal endpoint
+    # is trusted-network; ``compliance_internal_token`` is the optional X-Internal-Token (ADR-009).
+    # ``compliance_fail_open`` chooses behaviour when compliance-risk is unreachable: False
+    # (default) fails closed (refuse above-threshold creation); True degrades open (allow + warn).
+    compliance_check_enabled: bool = False
+    compliance_service_url: str = "http://localhost:8093"
+    compliance_internal_token: SecretStr | None = None
+    compliance_timeout_seconds: float = 3.0
+    compliance_fail_open: bool = False
 
     # Event publisher seam (real Kafka/SQS transport deferred to work15). The durable outbox is
     # the paylink.paylink_events table, always written in-transaction by the service; this only

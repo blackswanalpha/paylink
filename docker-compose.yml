@@ -74,12 +74,21 @@ services:
       PAYLINK_CHAIN_SUBMIT_ENABLED: "true"
       PAYLINK_SIGNER_MODE: service_key
       PAYLINK_LOG_LEVEL: INFO
+      # work12 (Flow E): gate above-threshold creates on compliance-risk. The internal token matches
+      # compliance-risk's COMPLIANCE_INTERNAL_SHARED_SECRET (dev-only fixture). The gate also needs an
+      # X-User-Id (JWT `sub`) header — the Kong gateway injecting it is a documented follow-up, so
+      # through the front door the gate currently no-ops; a direct call with X-User-Id exercises it.
+      PAYLINK_COMPLIANCE_CHECK_ENABLED: "true"
+      PAYLINK_COMPLIANCE_SERVICE_URL: http://compliance-risk:8093
+      PAYLINK_COMPLIANCE_INTERNAL_TOKEN: devnet-internal-token
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      compliance-risk:
         condition: service_healthy
     healthcheck:
       test:
@@ -260,6 +269,61 @@ services:
         - >-
           python -c "import urllib.request,sys;
           sys.exit(0 if urllib.request.urlopen('http://localhost:8092/internal/readyz').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
+  # work12 — compliance-risk (Python/FastAPI). KYC tier orchestration + the deterministic
+  # /v1/risk/evaluate decision (allow/block/review) over KYC tier / velocity / amount-vs-tier-ceiling
+  # / geo + the Kenya AML threshold (KES 150k cumulative). Owns the `compliance` schema; publishes
+  # compliance.kyc.*/compliance.check.*/compliance.flag.raised via the LogPublisher seam. JWT
+  # *consumer* (verifier-only): COMPLIANCE_JWT_PUBLIC_KEY_PEM is the public half of the FIXED dev
+  # keypair pinned on identity-service, so an identity-minted token verifies here. /v1/risk/evaluate is
+  # internal (trusted-network); COMPLIANCE_INTERNAL_SHARED_SECRET adds an optional X-Internal-Token
+  # check (paylink-service sends the matching PAYLINK_COMPLIANCE_INTERNAL_TOKEN). KYC callbacks are
+  # HMAC-signed (COMPLIANCE_CALLBACK_SECRETS, per-provider). Default profile — no chain dependency.
+  compliance-risk:
+    build:
+      context: ./linkmint-backend/compliance-risk
+    environment:
+      COMPLIANCE_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
+      COMPLIANCE_REDIS_URL: redis://redis:6379/0
+      COMPLIANCE_JWT_ISSUER: linkmint-identity
+      COMPLIANCE_JWT_AUDIENCE: linkmint
+      COMPLIANCE_LOG_LEVEL: INFO
+      COMPLIANCE_EVENT_PUBLISHER_MODE: log
+      COMPLIANCE_KYC_PROVIDER: stub
+      # Per-provider HMAC secret for /v1/kyc/callbacks/{provider} (dev-only fixture, NOT a real secret).
+      COMPLIANCE_CALLBACK_SECRETS: "stub:devnet-callback-secret"
+      # Optional defense-in-depth on internal /v1/risk/evaluate (matches paylink's token below).
+      COMPLIANCE_INTERNAL_SHARED_SECRET: devnet-internal-token
+      COMPLIANCE_AML_CUMULATIVE_THRESHOLD: "150000"
+      COMPLIANCE_AML_WINDOW_HOURS: "720"
+      # Dev-only public key matching identity-service's pinned private key (see identity note above).
+      COMPLIANCE_JWT_PUBLIC_KEY_PEM: |-
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4ICsoMfDlpFGxfKDkwaO
+        CSicE31hGuzVJ5xSxfB1Ybl2yBg5pVMsOZ/Wg5xrW0Hiwi3Us7GWJowpLSCxizw7
+        dgmkrSmKbVU9z/q2nnJcb0gAWCKreBQ0AWS1K3onUXV2ACkp2fmRktpdTU9ZEkCm
+        dXcegWENBM4saL+UhFOHu0/U85ImhlqRxw+ccXwuq9V0GowWYjVGgUB0FOwd2wKY
+        XdgdirHZQ4w7MwJ4zyF3P/8g3+9mcuWRcLc3Onx7g2h7IcUp0rw9phOx/8bsGodw
+        FWx3y3ulTGriFc796lQb/7t8PZpYONULjPw6tABKVBC29hm4uh1M2Ab36UFrjZyV
+        DQIDAQAB
+        -----END PUBLIC KEY-----
+    ports:
+      - "8093:8093"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8093/internal/readyz').status==200 else 1)"
       interval: 10s
       timeout: 5s
       retries: 10

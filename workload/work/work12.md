@@ -3,7 +3,7 @@
 > **Seeded** — expand with `/work 12` when picked up.
 
 - **Status:** todo · **Owner:** service-builder · **Stack:** Python/FastAPI · **Depends on:** 09 · **Flow:** [flow12](../flow/flow12.md)
-- **Phase:** 1 / MVP (basic KYC) · **Spec:** backendfeatures.md §2.15
+- **Phase:** 1 / MVP (basic KYC) · **Spec:** backendfeatures.md §2.6 (the "§2.15" seed was a stale ref — §2.15 is fraud-detection)
 
 ## Goal
 KYC orchestration and transaction risk scoring. Phase 1: basic KYC tiers + a `/v1/risk/evaluate`
