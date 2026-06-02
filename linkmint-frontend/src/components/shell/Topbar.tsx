@@ -10,6 +10,7 @@ import NextLink from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Box, Flex, HStack, Text } from '@chakra-ui/react';
 import { ChevronDown } from 'react-feather';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { NAV_ITEMS } from './nav';
 
 export function Topbar() {
@@ -68,35 +69,38 @@ export function Topbar() {
         Merchant workspace
       </Text>
 
-      {/* Account chip */}
-      <HStack
-        gap={2}
-        px={2}
-        py={1}
-        borderRadius="full"
-        _hover={{ bg: 'surfaceSubtle' }}
-        cursor="pointer"
-        title="Account (demo)"
-      >
-        <Box
-          w="28px"
-          h="28px"
+      {/* Right cluster: notification bell + account chip */}
+      <HStack gap={1}>
+        <NotificationBell />
+        <HStack
+          gap={2}
+          px={2}
+          py={1}
           borderRadius="full"
-          bg="accent.solid"
-          color="white"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          fontFamily="heading"
-          fontSize="sm"
-          fontWeight="600"
+          _hover={{ bg: 'surfaceSubtle' }}
+          cursor="pointer"
+          title="Account (demo)"
         >
-          M
-        </Box>
-        <Text display={{ base: 'none', sm: 'block' }} fontSize="sm" fontWeight="500">
-          Merchant
-        </Text>
-        <ChevronDown size={16} />
+          <Box
+            w="28px"
+            h="28px"
+            borderRadius="full"
+            bg="accent.solid"
+            color="white"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            fontFamily="heading"
+            fontSize="sm"
+            fontWeight="600"
+          >
+            M
+          </Box>
+          <Text display={{ base: 'none', sm: 'block' }} fontSize="sm" fontWeight="500">
+            Merchant
+          </Text>
+          <ChevronDown size={16} />
+        </HStack>
       </HStack>
     </Flex>
   );

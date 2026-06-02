@@ -33,7 +33,7 @@ export function GoldButton(props: GoldButtonProps) {
       bg="gold.solid"
       color="ink"
       _hover={{ bg: 'champagne.500' }}
-      _active={{ bg: 'champagne.600' }}
+      _active={{ bg: 'champagne.600', transform: 'scale(0.97)' }}
       {...props}
     />
   );

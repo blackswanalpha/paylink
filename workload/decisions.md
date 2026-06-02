@@ -251,3 +251,137 @@ Format:
   anchoring. (5) Phase-2 `TxAuditAnchor` on-chain anchoring and the NATS `audit.intake` consumer
   (work15) drop in behind the existing `audit.anchors` schema and the `intake.Source` seam without
   changing the chain or the producers.
+
+## ADR-011 — Event bus: Kafka via Redpanda, topic-per-domain, a shared byte-identical JSON envelope (refines ADR-004)
+- **Status:** Accepted (work15)
+- **Date:** 2026-06-02
+- **Context:** ADR-004 kept "Kafka/SQS" as the transport and deferred the local choice to work15.
+  Every service already carried a publisher/consumer seam (and Python producers a durable outbox
+  table) waiting for the real transport. The catalog is fan-out heavy (e.g. `paylink.requested` →
+  compliance-risk *and* payment-orchestrator; `chain.paylink.verified` → several services).
+- **Decision:** (1) **Transport = Kafka via Redpanda** — a single Kafka-API container (KRaft, no
+  ZooKeeper) in `docker-compose.yml`, dual-listener (`redpanda:9092` internal / `localhost:19092`
+  host), topics created by a one-shot `redpanda-init`. Chosen over SQS because Kafka topics +
+  per-service **consumer groups** model the catalog's fan-out natively (each consumer an independent
+  cursor over the same event); SQS would need SNS→multi-queue plumbing. (2) **Topic-per-domain** —
+  ~10 topics (`paylink`,`payment`,`chain`,`merchant`,`compliance`,`identity`,`notification`,
+  `escrow`,`settlement`,`fee`) ≈ the `backendfeatures.md` streams. The **full logical name** lives in
+  the envelope `name`; the Kafka message **key** is the entity id (per-entity ordering). The model is
+  documented in [catalog.md](catalog.md). (3) **Shared JSON envelope** `{id,name,key,correlation_id,
+  occurred_at,source,payload}`, serialized **byte-identically** by two client libs —
+  `linkmint-backend/eventbus-go` (franz-go) and `linkmint-backend/eventbus-python` (`aiokafka`) —
+  guarded by a committed golden fixture + per-lib `encode==golden` tests so Go-published events are
+  Python-consumable and vice-versa. Canonical rules: UTF-8, no HTML escaping, compact, fixed
+  top-level field order, **recursively key-sorted payload**, `occurred_at` an RFC3339-UTC-`Z` string.
+  (4) **At-least-once**: producers wait for the broker ack; consumers commit only after `handle()`
+  succeeds → consumers MUST be idempotent (pairs with work17; notification-service's per-event DB
+  dedupe is the model). **No secrets in payloads.** (5) **chain-event-mirror** (`linkmint-backend/
+  chain-event-mirror`, Go) subscribes the lVM datastream `/ws` (reusing the orchestrator's wsstream
+  engine, copied — the `internal/` rule forbids cross-module import) and republishes each chain event
+  as `chain.<kind>`; the chain RPC stays authoritative (the mirror is best-effort).
+- **Producer/consumer wiring.** Python producers (paylink/identity/merchant/compliance) keep writing
+  their durable outbox in-transaction; a **lifespan outbox-drain relay** (`app/events/relay.py`,
+  gated by `EVENT_PUBLISHER_MODE=kafka`) drains it to the bus (transactional outbox). Go producers
+  (payment-orchestrator/proof-validator) publish **inline** via eventbus-go (its `Publish` matches
+  `domain.Publisher` exactly), gated by `…_EVENT_PUBLISHER_MODE=kafka`. Consumers
+  (notification/identity/merchant/compliance) run a **lifespan bus-consumer task** (gated by
+  `…_EVENT_CONSUMER_ENABLED=true`) that feeds the service's existing typed `handle(name,payload)`
+  chokepoint. All kafka paths are **env-gated and lazily imported**, so the default mode needs no
+  broker and every existing unit/integration suite runs unchanged.
+- **Consequences:** (1) Two deployables per stack addition (Redpanda + the mirror); the libs add
+  `franz-go`/`aiokafka`. (2) Each Python service image installs `eventbus-python` (repo-root build
+  context, the proof-validator/paylink precedent); each Go producer `replace`s `../eventbus-go`.
+  (3) work15 closes against the **Infra/CI** DoD (like the Kong gateway, ADR-008) plus per-lib tests
+  — there is no single service to hit ≥80% on, but eventbus-go (81.8%), eventbus-python (99%), and
+  chain-event-mirror (96% of tested pkgs) all clear it. (4) If the owner later prefers NATS JetStream
+  (the `backendfeatures.md` original), only the transport in the two libs changes — the envelope,
+  catalog, relays, and consumers are unchanged. (5) **Deferred follow-ups** (filed in
+  [backlog.md](backlog.md)): a Go transactional-outbox (Go producers publish inline, not yet
+  outboxed); paylink-service consuming `chain.*` from the bus (it still reconciles via RPC);
+  the Go inbound consumers (payment-orchestrator `paylink.requested`, proof-validator
+  `payment.proof_received`, audit-log `intake.Source`); an `admin` topic + producer for
+  `admin.override.*`; exactly-once / per-stream retention tuning (Phase 2).
+
+## ADR-012 — Frontend motion engine: framer-motion (overlays stay Chakra-native), one global reduced-motion guard
+- **Status:** Accepted (FE work05)
+- **Date:** 2026-06-02
+- **Context:** FE work05 (frontendfeature.md §2.4) needs a cohesive, reduced-motion-safe motion
+  language — route transitions, overlay enter/exit, list stagger, number count-up, micro-interactions.
+  The web app shipped **zero** animation libraries. Two viable approaches: a dependency (framer-motion)
+  or CSS-only leaning on Chakra v3 — which already animates Dialog/Drawer/Menu/Tooltip enter **and
+  exit** (Ark keeps overlay nodes mounted through the `_closed` state) via slot-recipe keyframes. The
+  project owner chose **framer-motion**.
+- **Decision:** Use **framer-motion** (v12) as the engine for route transitions (`app/template.tsx` +
+  `PageTransition`), list stagger (`Stagger`/`StaggerItem`, `DataTable.staggerIn`), number count-up
+  (`useCountUp` + `MetricCard.countUp`), and micro-interactions (button-press recipe, settlement
+  `Burst`, copy-✓ `Pop`). Motion primitives live in `src/motion/` (barrel `@/motion`); hooks in
+  `src/hooks/`. Tokens are centralized in `src/motion/tokens.ts` (seconds + cubic-bezier) and mirrored
+  as Chakra `durations`/`easings` tokens for the CSS-driven bits (Panel hover, button press, skeleton).
+  **Reduced motion is gated twice (F.6):** globally via `<MotionConfig reducedMotion="user">`
+  (Provider) AND — because MotionConfig only suppresses transforms — each opacity-based enter wrapper
+  also takes an explicit `useReducedMotion()` gate (`initial={false}`) so neither transform nor opacity
+  transitions when reduced; the hardened `prefers-reduced-motion` block in globals.css backstops the
+  CSS animations. **Overlays are NOT rebuilt** — Modal/Drawer/Menu/Tooltip keep Chakra v3's native,
+  exit-aware motion; wrapping them in framer would mean new components (out of scope) and would fight
+  Ark's presence/focus-trap/scroll-lock. Count-up seeds to the FINAL value and never runs on skeletons,
+  so motion never fakes data/loading (F.7).
+- **Consequences:** (1) +~30–50 KB gz (tree-shaken) on the client bundle for richer, spring-capable
+  motion and a single animation exemplar later feature items reuse. (2) Route **exit** transitions and
+  FLIP list-reorder are deliberate non-goals (App-Router exit needs navigation interception; not
+  required by §2.4). (3) SSR-safe: motion files are `'use client'`, `useReducedMotion` is deterministic
+  on the server, count-up state seeds to the real number — `next build` is clean, no hydration warnings.
+  (4) Tests set `MotionGlobalConfig.skipAnimations = true` so jsdom assertions are deterministic. (5) A
+  future phase wanting shared-element/route-exit motion can extend framer behind the same
+  `useReducedMotion` guard without reworking this base. (6) Overlay easing is left at Chakra's defaults
+  (a slot-recipe easing override was considered and skipped to avoid recipe-merge risk for a marginal
+  cohesiveness gain).
+
+## ADR-013 — Observability: shared telemetry-go/python libs, trace context in Kafka headers, OTLP→Tempo (work18)
+- **Status:** Accepted (work18)
+- **Date:** 2026-06-02
+- **Context:** Every service already emitted structured JSON logs with a per-request correlation id
+  (`X-Request-Id`→`trace_id`) and exposed `/metrics`; Go services even had `http_requests_total`. The
+  gaps for `backendfeatures.md` §Observability were **distributed tracing** (no OpenTelemetry anywhere),
+  W3C `traceparent` propagation across HTTP **and** the event bus, the standard counters Python lacked,
+  and a local metrics+tracing backend. The frozen, byte-identical eventbus `Envelope` (ADR-011) must not
+  change. The owner chose a **uniform** rollout (all services) with **Grafana Tempo + Grafana**.
+- **Decision:** (1) Ship the established **paired sibling shared libs**: `telemetry-go`
+  (`github.com/paylink/telemetry-go`) and `telemetry-python` (`linkmint_telemetry`). Both use **only the
+  OTel API/SDK + the OTLP gRPC exporter** with a **thin custom HTTP/ASGI middleware** — deliberately NOT
+  the `otel contrib`/`opentelemetry-instrumentation-*` packages, whose version must track the core and
+  was already mismatched in the tree (otelhttp v0.60 vs otel v1.41). (2) **One id everywhere:** the
+  telemetry middleware runs **outermost** (before the existing `RequestID`/`RequestIdMiddleware`), starts
+  the server span, and **seeds `X-Request-Id` with the 32-hex OTel trace id**, which the existing
+  middleware then adopts — so logs, the error envelope, the response header, and the Tempo trace all
+  share one id, with **no change to the logging modules**. (3) **Bus trace context rides in Kafka record
+  HEADERS, not the Envelope** — `traceparent` is injected on publish and extracted into a consume span,
+  instrumented **inside eventbus-go/eventbus-python** so every producer/consumer is auto-traced; the libs
+  depend only on the OTel **API** (`otel.GetTextMapPropagator()` / global tracer), which is a **no-op
+  until a service calls `telemetry.Init`** — zero behaviour change otherwise, and the wire Envelope is
+  untouched. (4) **Off by default, graceful:** tracing initializes only when `OTEL_EXPORTER_OTLP_ENDPOINT`
+  is set and `OTEL_SDK_DISABLED` is falsey; compose wires the per-service endpoint via
+  `${OTEL_EXPORTER_OTLP_ENDPOINT:-}` (empty default), so a normal `docker compose up` runs telemetry as a
+  no-op with no OTLP connection attempts. (5) **Local stack** behind a docker-compose `observability`
+  profile: **Prometheus** (host `:9091`; scrapes every service `/metrics` + the lVM node `:9090` + Kong
+  `:8100`), **Grafana Tempo** (OTLP `:4317/:4318`), **Grafana** (`:3000`, provisioned Prometheus+Tempo
+  datasources + a starter golden-signals dashboard) — all under `monitoring/`. The node now runs with
+  `--metrics`. (6) **Standard counters:** Python gains `http_requests_total`/`http_request_duration_seconds`
+  (via the ASGI middleware, matching Go); `bus_messages_consumed_total` is emitted by eventbus-python on
+  the default registry (auto-appears on consumers); `chain_txs_submitted_total` is added to proof-validator
+  alongside its existing `settlement_tx_total`. (7) **admin-backoffice** is migrated from a self-contained
+  build to the **repo-root build context** (it is the first service to need a sibling lib).
+- **PII / invariants:** Spans, metric labels, and the unified id carry only low-cardinality, PII-free
+  data — the route **template** (never a raw path), method, status, event name, result. No request bodies,
+  query strings, auth headers, or rail ids on spans. Non-custodial is untouched (telemetry is read-only).
+- **Consequences:** (1) Every Python image installs `telemetry-python` (eager import, repo-root build
+  context — the eventbus/idempotency precedent); every Go service `replace`s `../telemetry-go`; CI gains
+  `telemetry-go`/`telemetry-python` jobs + a `pip install ../telemetry-python` step in each Python
+  consumer job. (2) `go mod tidy` bumped proof-validator/mpesa to `go 1.25.7` (the OTLP/grpc deps);
+  CI's `GO_VERSION: "1.25.x"` resolves it. (3) work18 closes against the **Infra/CI** DoD (like ADR-008/011)
+  plus the two libs' ≥80% coverage (telemetry-go 97%, telemetry-python 98%). (4) **Deferred follow-ups**
+  (filed in [backlog.md](backlog.md)): SLO-keyed alerting + deep Grafana dashboards (`monitoring/alerts/`,
+  Phase 2/3); Loki/ELK log aggregation (Phase 3); **lVM chain OTel tracing** (the node stays metrics-only;
+  OTLP-from-chain is a follow-up); enabling Kong's `opentelemetry` plugin → Tempo (metrics are already
+  scraped). (5) If the owner later prefers Jaeger, only the docker-compose backend + Grafana datasource
+  change — the libs export standard OTLP. The ADR-012 number is held by the parallel frontend track (FE
+  work05); this backend ADR takes the next free number, 013.

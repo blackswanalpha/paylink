@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.channels.base import SendError, SendResult
 from app.config import Settings
-from app.db.models import DeliveryRow, TemplateRow
+from app.db.models import DeliveryRow, InboxNotificationRow, TemplateRow
+from app.db.repository import _decode_inbox_cursor, _encode_inbox_cursor
 from app.domain.models import DeliveryRecord
 
 
@@ -70,6 +71,8 @@ class FakeRepository:
 
     def __init__(self, templates: list[TemplateRow] | None = None) -> None:
         self.deliveries: dict[uuid.UUID, DeliveryRow] = {}
+        self.inbox: dict[uuid.UUID, InboxNotificationRow] = {}
+        self._inbox_seq = 0
         self.templates: list[TemplateRow] = (
             templates if templates is not None else default_templates()
         )
@@ -90,6 +93,64 @@ class FakeRepository:
             if (row.payload or {}).get("dedupe_key") == dedupe_key:
                 return row
         return None
+
+    # --- In-app inbox (mirrors NotifyRepository semantics) -------------------------------------
+
+    async def insert_inbox(self, row: InboxNotificationRow) -> InboxNotificationRow | None:
+        for existing in self.inbox.values():
+            if existing.dedupe_key == row.dedupe_key:
+                return None  # dedupe — DB UNIQUE index is the arbiter in the real repo
+        if row.created_at is None:
+            # Stamp a strictly-increasing time so list ordering is deterministic without a DB.
+            self._inbox_seq += 1
+            row.created_at = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=self._inbox_seq)
+        if row.read is None:
+            row.read = False
+        self.inbox[row.notification_id] = row
+        return row
+
+    async def find_inbox_by_dedupe(self, dedupe_key: str) -> InboxNotificationRow | None:
+        for row in self.inbox.values():
+            if row.dedupe_key == dedupe_key:
+                return row
+        return None
+
+    async def list_inbox(
+        self, recipient_addr: str, *, limit: int, cursor: str | None = None
+    ) -> tuple[list[InboxNotificationRow], str | None]:
+        rows = [r for r in self.inbox.values() if r.recipient_addr == recipient_addr.lower()]
+        rows.sort(key=lambda r: (r.created_at, r.notification_id), reverse=True)
+        if cursor:
+            decoded = _decode_inbox_cursor(cursor)
+            if decoded is not None:
+                ts, nid = decoded
+                rows = [r for r in rows if (r.created_at, r.notification_id) < (ts, nid)]
+        next_cursor: str | None = None
+        if len(rows) > limit:
+            rows = rows[:limit]
+            last = rows[-1]
+            next_cursor = _encode_inbox_cursor(last.created_at, last.notification_id)
+        return rows, next_cursor
+
+    async def mark_inbox_read(
+        self, recipient_addr: str, notification_id: uuid.UUID
+    ) -> InboxNotificationRow | None:
+        row = self.inbox.get(notification_id)
+        if row is None or row.recipient_addr != recipient_addr.lower():
+            return None
+        if not row.read:
+            row.read = True
+            row.read_at = datetime.now(UTC)
+        return row
+
+    async def mark_all_inbox_read(self, recipient_addr: str) -> int:
+        count = 0
+        for row in self.inbox.values():
+            if row.recipient_addr == recipient_addr.lower() and not row.read:
+                row.read = True
+                row.read_at = datetime.now(UTC)
+                count += 1
+        return count
 
 
 class FakeDeliveryStore:

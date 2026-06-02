@@ -1,9 +1,8 @@
 # work19 — invoice-subscription (invoices)
 
-> **Seeded** — expand with `/work 19` when picked up.
-
-- **Status:** todo · **Owner:** service-builder · **Stack:** Python/FastAPI · **Depends on:** 01 · **Flow:** [flow19](../flow/flow19.md)
-- **Phase:** 2 / Beta (invoices; subscriptions are work31) · **Spec:** backendfeatures.md §2.6
+- **Status:** done · **Owner:** service-builder · **Stack:** Python/FastAPI · **Depends on:** 01 · **Flow:** [flow19](../flow/flow19.md)
+- **Phase:** 2 / Beta (invoices; subscriptions are work31) · **Spec:** backendfeatures.md §2.19
+- **Service:** `linkmint-backend/invoice-subscription/` (port 8096, `invoice` schema)
 
 ## Goal
 Multi-line invoices that aggregate to a single PayLink, with the DRAFT→OPEN→PAID|VOID|OVERDUE

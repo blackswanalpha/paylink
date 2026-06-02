@@ -7,12 +7,12 @@ from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from linkmint_idempotency import fingerprint
 
 from app.api.v1 import schemas
 from app.api.v1._helpers import idempotent, parse_uuid
 from app.db.models import ApiKeyRow, UserRow
 from app.deps import IdemKey, IdempotencyDep, PrincipalDep, ServicesDep
-from app.idempotency import fingerprint
 
 router = APIRouter(prefix="/v1/users", tags=["users"])
 

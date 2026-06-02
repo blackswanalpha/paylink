@@ -15,6 +15,7 @@ export type { AuthConfig, FetchLike, RequestOptions } from './http';
 // Resources (exported for typing / advanced composition)
 export { PayLinksResource } from './resources/paylinks';
 export { PaymentsResource } from './resources/payments';
+export { NotificationsResource } from './resources/notifications';
 
 // Idempotency helper
 export { defaultIdempotencyKey } from './idempotency';
@@ -53,4 +54,9 @@ export type {
   PayLinkList,
   InitiatePaymentInput,
   Payment,
+  NotificationKind,
+  Notification,
+  ListNotificationsParams,
+  NotificationList,
+  MarkAllReadResult,
 } from './types';

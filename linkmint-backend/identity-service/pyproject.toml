@@ -75,6 +75,12 @@ exclude = ["alembic/", "tests/"]
 module = ["pyotp.*", "authlib.*"]
 ignore_missing_imports = true
 
+# work15 — the shared Kafka client lib is installed into the runtime image only (kafka mode), not the
+# dev/test env (the default "log" mode never imports it). Treat it as untyped for the type check.
+[[tool.mypy.overrides]]
+module = ["linkmint_eventbus", "linkmint_eventbus.*"]
+ignore_missing_imports = true
+
 # ── Tests / coverage ──
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

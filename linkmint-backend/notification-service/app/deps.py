@@ -14,13 +14,13 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import Depends, Header, Request
+from linkmint_idempotency import IdempotencyStore
 
 from app.config import Settings
 from app.db.repository import NotifyRepository
 from app.domain.service import NotificationService
 from app.errors import AppError, ErrorCode
 from app.events.consumer import NotificationEventConsumer
-from app.idempotency import IdempotencyStore
 from app.templating.registry import TemplateRegistry
 
 
@@ -57,6 +57,24 @@ async def get_consumer(request: Request) -> AsyncIterator[NotificationEventConsu
         yield NotificationEventConsumer(service)
 
 
+def caller_address(
+    request: Request,
+    x_creator_addr: str | None = Header(default=None, alias="X-Creator-Addr"),
+) -> str:
+    """Authenticated caller for the in-app inbox (FE work07), scoped per creator address.
+
+    The API gateway verifies the JWT and injects ``X-Creator-Addr`` (the same seam paylink-service
+    trusts). In local direct dev (no gateway) the optional ``NOTIFY_DEV_CREATOR_ADDR`` fallback
+    applies; if neither is present the read API is unauthenticated → 401. Lowercased so it matches
+    the address paylink-service stores + emits.
+    """
+    settings: Settings = request.app.state.settings
+    addr = x_creator_addr or settings.dev_creator_addr
+    if not addr:
+        raise AppError(ErrorCode.UNAUTHORIZED, "missing X-Creator-Addr")
+    return addr.lower()
+
+
 def internal_gate(
     request: Request,
     x_internal_token: str | None = Header(default=None),
@@ -81,4 +99,5 @@ IdempotencyDep = Annotated[IdempotencyStore, Depends(get_idempotency)]
 RepoDep = Annotated[NotifyRepository, Depends(get_repo)]
 ConsumerDep = Annotated[NotificationEventConsumer, Depends(get_consumer)]
 InternalGateDep = Annotated[None, Depends(internal_gate)]
+CallerDep = Annotated[str, Depends(caller_address)]
 IdemKey = Annotated[str | None, Header(alias="Idempotency-Key")]

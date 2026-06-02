@@ -122,3 +122,46 @@ export interface Payment {
   created_at: string;
   updated_at: string;
 }
+
+/** Severity of an in-app notification (drives the notification center's colour-coding). */
+export type NotificationKind = 'success' | 'info' | 'warning' | 'error';
+
+/**
+ * An in-app notification as returned by the notification center API
+ * (notification-service `app/api/v1/inbox.py`). Scoped server-side to the authenticated caller, so
+ * the surface carries no recipient field.
+ */
+export interface Notification {
+  /** UUID notification id. */
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  /** Body / detail line, or null. */
+  body: string | null;
+  /** Optional in-app deep link to open when activated, or null. */
+  href: string | null;
+  read: boolean;
+  /** RFC 3339 / ISO 8601 timestamp. */
+  created_at: string;
+}
+
+/** Query parameters for `GET /v1/notifications`. */
+export interface ListNotificationsParams {
+  /** Page size, 1–100. Defaults to 20 server-side. */
+  limit?: number;
+  /** Opaque pagination cursor from a previous page's `next_cursor`. */
+  cursor?: string;
+}
+
+/** Response of `GET /v1/notifications` (200). */
+export interface NotificationList {
+  items: Notification[];
+  /** Cursor for the next page, or null when there are no more results. */
+  next_cursor: string | null;
+}
+
+/** Response of `POST /v1/notifications/read-all` (200). */
+export interface MarkAllReadResult {
+  /** How many notifications were flipped to read. */
+  count: number;
+}

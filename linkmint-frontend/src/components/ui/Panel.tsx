@@ -18,7 +18,9 @@ export function Panel({ interactive, children, ...rest }: PanelProps) {
       borderRadius="lg"
       boxShadow="sm"
       p={6}
-      transition="transform 200ms cubic-bezier(.2,.8,.2,1), box-shadow 200ms cubic-bezier(.2,.8,.2,1)"
+      transitionProperty="transform, box-shadow"
+      transitionDuration="lmBase"
+      transitionTimingFunction="lmStandard"
       {...(interactive
         ? { cursor: 'pointer', _hover: { transform: 'translateY(-2px)', boxShadow: 'md' } }
         : {})}

@@ -4,83 +4,40 @@
  * MerchantDashboard — the flagship Ivory Premium screen (frontendfeature.md §3.3). Builds the single
  * SDK client from the server-minted token (client-side, so the base URL resolves to the app origin),
  * loads the merchant's PayLinks (LIVE/work01), and renders headline metrics + a recent-activity
- * sparkline + a premium PayLinks table. All data is real; nothing is faked (F.7).
+ * sparkline + a premium PayLinks table.
+ *
+ * Loading / empty / optimistic states run through the work06 system: `Loadable` sequences
+ * skeleton → empty → data (and keeps data on refresh, no skeleton flash), the empty state comes from
+ * the branded catalog, and a row-level Cancel is optimistic (flip → reconcile → rollback on error,
+ * confirmed via an alert dialog). All data is real; nothing is faked (F.7).
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import NextLink from 'next/link';
 import { Button, Grid, HStack, SimpleGrid, Stack, Text } from '@chakra-ui/react';
-import { Inbox, PlusCircle, RefreshCw } from 'react-feather';
+import { PlusCircle, RefreshCw } from 'react-feather';
 import type { LinkMintClient, PayLink } from '@linkmint/sdk';
 import { createLinkMintClient } from '@/lib/linkmint';
 import { usePayLinks } from '@/hooks/usePayLinks';
+import { useAppStore } from '@/store/app';
 import { AppShell } from '@/components/shell/AppShell';
+import { payLinkColumnsWithCancel } from '@/components/paylinks/columns';
+import { CancelPayLinkModal } from '@/components/paylinks/CancelPayLinkModal';
+import { Stagger, StaggerItem } from '@/motion';
 import {
-  AddressChip,
   AmountDisplay,
   DataTable,
-  EmptyState,
   ErrorBanner,
+  Loadable,
   MetricCard,
-  MetricCardSkeleton,
+  MetricGridSkeleton,
+  NoPayLinksEmpty,
   PageHeader,
   Panel,
-  PayLinkStatusPill,
-  TableRowsSkeleton,
-  type DataTableColumn,
+  TableSkeleton,
 } from '@/components/ui';
 
 const RECENT_LIMIT = 8;
-
-function formatShortDate(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) {
-    return '—';
-  }
-  return new Date(t).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-const RECENT_COLUMNS: DataTableColumn<PayLink>[] = [
-  {
-    key: 'pl_id',
-    header: 'PayLink',
-    render: (pl) => <AddressChip value={pl.pl_id} label="PayLink id" />,
-  },
-  {
-    key: 'receiver',
-    header: 'Receiver',
-    render: (pl) => <AddressChip value={pl.receiver} label="receiver" />,
-  },
-  {
-    key: 'amount',
-    header: 'Amount',
-    align: 'end',
-    sortable: true,
-    sortValue: (pl) => pl.amount,
-    render: (pl) => <AmountDisplay amountMinor={pl.amount} currency={pl.currency} size="sm" />,
-  },
-  {
-    key: 'status',
-    header: 'Status',
-    render: (pl) => <PayLinkStatusPill status={pl.status} />,
-  },
-  {
-    key: 'created',
-    header: 'Created',
-    sortable: true,
-    sortValue: (pl) => Date.parse(pl.created_at),
-    render: (pl) => (
-      <Text fontSize="sm" color="fg.muted" whiteSpace="nowrap">
-        {formatShortDate(pl.created_at)}
-      </Text>
-    ),
-  },
-];
 
 export function MerchantDashboard({
   initialToken,
@@ -91,10 +48,13 @@ export function MerchantDashboard({
 }) {
   const [client, setClient] = useState<LinkMintClient | null>(null);
   useEffect(() => {
-    setClient(createLinkMintClient(initialToken));
+    const c = createLinkMintClient(initialToken);
+    setClient(c);
+    // Also expose globally so the shell's notification bell (Topbar) can drive the inbox (work07).
+    useAppStore.getState().setClient(c);
   }, [initialToken]);
 
-  const { items, aggregates, loading, error, refresh } = usePayLinks(client, creatorAddr);
+  const { items, aggregates, loading, error, refresh, cancel } = usePayLinks(client, creatorAddr);
   const currency = aggregates.currency ?? 'KES';
 
   const recent = useMemo(
@@ -105,7 +65,12 @@ export function MerchantDashboard({
     [items],
   );
 
-  const initializing = !client || (loading && items.length === 0);
+  // The cancel row action requests a confirm; the alert dialog owns the (destructive) mutation.
+  const [confirmTarget, setConfirmTarget] = useState<PayLink | null>(null);
+  const columns = useMemo(() => payLinkColumnsWithCancel(setConfirmTarget), []);
+
+  const hasData = items.length > 0;
+  const isInitialLoading = !client || (loading && !hasData);
 
   return (
     <AppShell>
@@ -140,34 +105,40 @@ export function MerchantDashboard({
 
         {error ? <ErrorBanner error={error} onRetry={refresh} /> : null}
 
-        {/* Metrics */}
-        <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} gap={5}>
-          {initializing ? (
-            <>
-              <MetricCardSkeleton />
-              <MetricCardSkeleton />
-              <MetricCardSkeleton />
-              <MetricCardSkeleton />
-            </>
-          ) : (
-            <>
-              <MetricCard
-                label="Total settled"
-                value={
-                  <AmountDisplay
-                    amountMinor={aggregates.totalSettledMinor}
-                    currency={currency}
-                    size="md"
-                  />
-                }
-                sparkline={aggregates.sparkline}
-              />
-              <MetricCard label="Active PayLinks" value={String(aggregates.activeCount)} />
-              <MetricCard label="Pending settlement" value={String(aggregates.pendingCount)} />
-              <MetricCard label="Total PayLinks" value={String(aggregates.total)} />
-            </>
-          )}
-        </SimpleGrid>
+        {/* Metrics — skeleton on first load, real numbers (count-up + stagger) after. Zeros are real
+            data, never an "empty". On a failed initial load Loadable yields to the banner above (F.5). */}
+        <Loadable
+          loading={isInitialLoading}
+          error={error}
+          isEmpty={false}
+          hasData={hasData}
+          skeleton={<MetricGridSkeleton count={4} />}
+          empty={null}
+        >
+          <Stagger>
+            <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} gap={5}>
+              <StaggerItem>
+                <MetricCard
+                  label="Total settled"
+                  countUp={{
+                    to: aggregates.totalSettledMinor,
+                    format: (n) => <AmountDisplay amountMinor={n} currency={currency} size="md" />,
+                  }}
+                  sparkline={aggregates.sparkline}
+                />
+              </StaggerItem>
+              <StaggerItem>
+                <MetricCard label="Active PayLinks" countUp={{ to: aggregates.activeCount }} />
+              </StaggerItem>
+              <StaggerItem>
+                <MetricCard label="Pending settlement" countUp={{ to: aggregates.pendingCount }} />
+              </StaggerItem>
+              <StaggerItem>
+                <MetricCard label="Total PayLinks" countUp={{ to: aggregates.total }} />
+              </StaggerItem>
+            </SimpleGrid>
+          </Stagger>
+        </Loadable>
 
         {/* Recent PayLinks */}
         <Panel p={0} overflow="hidden">
@@ -181,46 +152,43 @@ export function MerchantDashboard({
             <Text fontFamily="heading" fontWeight="600" fontSize="lg">
               Recent PayLinks
             </Text>
-            {!initializing && items.length > 0 ? (
+            {hasData ? (
               <Text fontSize="sm" color="fg.muted">
                 Showing {recent.length} of {items.length}
               </Text>
             ) : null}
           </HStack>
 
-          {initializing ? (
-            <Stack p={6}>
-              <TableRowsSkeleton rows={5} />
-            </Stack>
-          ) : items.length === 0 ? (
-            <EmptyState
-              icon={<Inbox size={24} />}
-              title={error ? 'Could not load PayLinks' : 'No PayLinks yet'}
-              description={
-                error
-                  ? 'Try refreshing once the local stack is up.'
-                  : 'Create your first PayLink and share it — it will appear here as it moves to settled.'
-              }
-              action={
-                <Button asChild variant="solid" colorPalette="emerald" size="sm">
-                  <NextLink href="/">
-                    <HStack gap={2}>
-                      <PlusCircle size={15} />
-                      <Text>Create PayLink</Text>
-                    </HStack>
-                  </NextLink>
-                </Button>
-              }
-            />
-          ) : (
+          <Loadable
+            loading={isInitialLoading}
+            error={error}
+            isEmpty={!hasData}
+            hasData={hasData}
+            skeleton={<TableSkeleton rows={5} label="PayLinks table" />}
+            empty={
+              <NoPayLinksEmpty
+                action={
+                  <Button asChild variant="solid" colorPalette="emerald" size="sm">
+                    <NextLink href="/">
+                      <HStack gap={2}>
+                        <PlusCircle size={15} />
+                        <Text>Create PayLink</Text>
+                      </HStack>
+                    </NextLink>
+                  </Button>
+                }
+              />
+            }
+          >
             <DataTable
-              columns={RECENT_COLUMNS}
+              columns={columns}
               rows={recent}
               rowKey={(pl) => pl.pl_id}
               interactive
+              staggerIn
               caption="Recent PayLinks"
             />
-          )}
+          </Loadable>
         </Panel>
 
         <Grid>
@@ -231,6 +199,15 @@ export function MerchantDashboard({
           </Text>
         </Grid>
       </Stack>
+
+      <CancelPayLinkModal
+        target={confirmTarget}
+        onClose={() => setConfirmTarget(null)}
+        onConfirm={(pl) => {
+          void cancel(pl.pl_id);
+          setConfirmTarget(null);
+        }}
+      />
     </AppShell>
   );
 }

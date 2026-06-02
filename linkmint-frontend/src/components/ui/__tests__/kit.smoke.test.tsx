@@ -21,6 +21,7 @@ import { Avatar } from '../Avatar';
 import { CopyField } from '../CopyField';
 import { QRBlock } from '../QRBlock';
 import { DataTable, type DataTableColumn } from '../DataTable';
+import { MetricCard } from '../MetricCard';
 
 describe('Button', () => {
   it('renders with its label', () => {
@@ -72,6 +73,15 @@ describe('Modal', () => {
     );
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes Chakra motion state: the open dialog carries a data-state attribute (work05)', () => {
+    renderWithTheme(
+      <Modal open onClose={() => undefined} title="Confirm">
+        Body
+      </Modal>,
+    );
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-state');
   });
 });
 
@@ -264,5 +274,26 @@ describe('DataTable', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Load more' }));
     expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders every data row when staggerIn animates them in (work05)', () => {
+    renderWithTheme(
+      <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} staggerIn caption="PayLinks" />,
+    );
+    expect(screen.getByText('Bravo')).toBeInTheDocument();
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+    expect(screen.getByText('Charlie')).toBeInTheDocument();
+  });
+});
+
+describe('MetricCard (count-up)', () => {
+  it('shows the real target number with countUp, never a fake value (work05 / F.7)', () => {
+    renderWithTheme(<MetricCard label="Total PayLinks" countUp={{ to: 1234 }} />);
+    expect(screen.getByText('1234')).toBeInTheDocument();
+  });
+
+  it('still renders a plain value when countUp is absent', () => {
+    renderWithTheme(<MetricCard label="Active" value="7" />);
+    expect(screen.getByText('7')).toBeInTheDocument();
   });
 });

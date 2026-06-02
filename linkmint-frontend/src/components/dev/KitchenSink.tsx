@@ -17,24 +17,34 @@ import {
   Button,
   CopyField,
   DataTable,
+  DetailPanelSkeleton,
   Drawer,
   EmptyState,
   FormField,
+  FormSkeleton,
   GoldButton,
   IconButton,
+  ListCardSkeleton,
   Menu,
   MetricCard,
+  MetricGridSkeleton,
   Modal,
+  NoApiKeysEmpty,
+  NoPayLinksEmpty,
+  NoPaymentsEmpty,
+  NoSearchResultsEmpty,
   Panel,
   PayLinkStatusPill,
   QRBlock,
   Skeleton,
   Stepper,
+  TableSkeleton,
   Tabs,
   Tooltip,
   type DataTableColumn,
 } from '@/components/ui';
 import { ErrorSystemDemo } from '@/components/dev/ErrorSystemDemo';
+import { NotificationsDemo } from '@/components/dev/NotificationsDemo';
 
 interface DemoRow {
   id: string;
@@ -291,8 +301,51 @@ export function KitchenSink() {
             </SimpleGrid>
           </Section>
 
+          <Section title="Skeleton compositions (work06)">
+            <Stack gap={6}>
+              <MetricGridSkeleton count={3} />
+              <DetailPanelSkeleton rows={4} />
+              <FormSkeleton fields={3} />
+              <ListCardSkeleton items={3} />
+              <TableSkeleton rows={3} />
+            </Stack>
+          </Section>
+
+          <Section title="Empty-state catalog (work06)">
+            <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+              <Panel>
+                <NoPayLinksEmpty
+                  action={
+                    <Button colorPalette="emerald" size="sm">
+                      Create PayLink
+                    </Button>
+                  }
+                />
+              </Panel>
+              <Panel>
+                <NoPaymentsEmpty />
+              </Panel>
+              <Panel>
+                <NoSearchResultsEmpty />
+              </Panel>
+              <Panel>
+                <NoApiKeysEmpty
+                  action={
+                    <Button colorPalette="emerald" size="sm">
+                      Create key
+                    </Button>
+                  }
+                />
+              </Panel>
+            </SimpleGrid>
+          </Section>
+
           <Section title="Error & feedback system (work04)">
             <ErrorSystemDemo />
+          </Section>
+
+          <Section title="Notifications & toasts (work07)">
+            <NotificationsDemo />
           </Section>
         </Stack>
       </Container>

@@ -9,7 +9,8 @@
 import { HStack, IconButton, Text } from '@chakra-ui/react';
 import { Check, Copy } from 'react-feather';
 import { useState } from 'react';
-import { toast } from 'sonner';
+import { notify } from '@/lib/notify';
+import { Pop } from '@/motion';
 
 export interface AddressChipProps {
   value: string;
@@ -34,10 +35,10 @@ export function AddressChip({ value, head = 6, tail = 4, label = 'value' }: Addr
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
-      toast.success(`Copied ${label}`);
+      notify.success(`Copied ${label}`);
       window.setTimeout(() => setCopied(false), 1200);
     } catch {
-      toast.error('Could not copy to clipboard');
+      notify.error('Could not copy to clipboard');
     }
   }
 
@@ -56,7 +57,9 @@ export function AddressChip({ value, head = 6, tail = 4, label = 'value' }: Addr
         {truncate(value, head, tail)}
       </Text>
       <IconButton aria-label={`Copy ${label}`} size="2xs" variant="ghost" onClick={copy}>
-        {copied ? <Check size={12} /> : <Copy size={12} />}
+        <Pop key={copied ? 'on' : 'off'} active={copied}>
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+        </Pop>
       </IconButton>
     </HStack>
   );

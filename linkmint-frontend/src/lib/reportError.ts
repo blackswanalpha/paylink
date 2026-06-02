@@ -3,7 +3,7 @@
  * It normalizes the thrown value (SDK error hierarchy only — F.1), classifies it, then *routes* it:
  *
  *   reauth / kyc  → the app-wide overlay store (`useErrorStore`)
- *   toast         → Sonner (the transport already mounted in Provider; the richer center is work07)
+ *   toast         → the governed `notify.error` (work07); unified styling, single seam (F.5)
  *   inline / page → no side effect — the caller renders it (e.g. <ErrorBanner/>), and we return the
  *                   normalized `DisplayError` so they can
  *
@@ -11,7 +11,6 @@
  * ErrorBoundary) can call it. The hook wrapper `useErrorHandler` builds on top of this.
  */
 
-import { toast } from 'sonner';
 import {
   classifyError,
   toDisplayError,
@@ -19,6 +18,7 @@ import {
   type ErrorClassification,
   type ErrorSurface,
 } from '@/lib/errors';
+import { notify } from '@/lib/notify';
 import { useErrorStore } from '@/store/errors';
 
 export interface ReportOptions {
@@ -65,8 +65,10 @@ export function reportError(err: unknown, opts?: ReportOptions): ReportResult {
       useErrorStore.getState().requireKyc(error);
       break;
     case 'toast': {
+      // The error system decides toast-vs-inline (work04); work07 owns how the toast renders, so the
+      // toast surface goes through the governed `notify.error` (unified styling, single seam — F.5).
       const description = [error.message, opts?.context].filter(Boolean).join(' — ');
-      toast.error(error.title, { description });
+      notify.error(error.title, { description });
       break;
     }
     case 'inline':

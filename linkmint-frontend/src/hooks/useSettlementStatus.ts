@@ -10,12 +10,12 @@
  */
 
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
 import { NotFoundError } from '@linkmint/sdk';
 import type { PayLink, PayLinkStatus } from '@linkmint/sdk';
 import { useAppStore } from '@/store/app';
 import { clientConfig } from '@/lib/env';
 import { isAbortError, type DisplayError } from '@/lib/errors';
+import { notify } from '@/lib/notify';
 import { reportError } from '@/lib/reportError';
 
 const TERMINAL: ReadonlySet<PayLinkStatus> = new Set([
@@ -53,9 +53,9 @@ export function useSettlementStatus(plId: string): SettlementState {
 
     const finishToast = (status: PayLinkStatus): void => {
       if (status === 'VERIFIED') {
-        toast.success('Settled on-chain', { description: 'The PayLink is VERIFIED.' });
+        notify.success('Settled on-chain', { description: 'The PayLink is VERIFIED.' });
       } else {
-        toast.error(`PayLink ${status.toLowerCase()}`, {
+        notify.error(`PayLink ${status.toLowerCase()}`, {
           description: 'Settlement did not complete.',
         });
       }

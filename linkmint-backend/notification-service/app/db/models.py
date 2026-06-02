@@ -89,3 +89,34 @@ class TemplateRow(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+
+class InboxNotificationRow(Base):
+    """An in-app inbox notification, scoped to a recipient ADDRESS (the creator/merchant address the
+    gateway injects as ``X-Creator-Addr``) — distinct from the UUID-keyed SMS/email ``deliveries``.
+
+    This backs the web app's notification center (FE work07): the read API filters by
+    ``recipient_addr`` (ownership), and ``dedupe_key`` (UNIQUE) makes the write path safe for an
+    at-least-once producer the same way ``deliveries`` is. ``read`` flips when the user opens it.
+    """
+
+    __tablename__ = "inbox_notifications"
+    __mapper_args__ = {"eager_defaults": True}
+
+    notification_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    recipient_addr: Mapped[str] = mapped_column(Text, nullable=False)  # lowercased creator address
+    kind: Mapped[str] = mapped_column(Text, nullable=False)  # success|info|warning|error
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    href: Mapped[str | None] = mapped_column(Text, nullable=True)
+    event_kind: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dedupe_key: Mapped[str] = mapped_column(Text, nullable=False)
+    read: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

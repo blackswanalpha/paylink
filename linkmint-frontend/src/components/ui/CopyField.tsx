@@ -13,7 +13,8 @@
 import { useState } from 'react';
 import { HStack, IconButton, Text } from '@chakra-ui/react';
 import { Check, Copy } from 'react-feather';
-import { toast } from 'sonner';
+import { notify } from '@/lib/notify';
+import { Pop } from '@/motion';
 
 export interface CopyFieldProps {
   /** The full value copied to the clipboard (even when the display is truncated). */
@@ -51,10 +52,10 @@ export function CopyField({
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
-      toast.success(`Copied ${label}`);
+      notify.success(`Copied ${label}`);
       window.setTimeout(() => setCopied(false), 1200);
     } catch {
-      toast.error('Could not copy to clipboard');
+      notify.error('Could not copy to clipboard');
     }
   }
 
@@ -78,7 +79,9 @@ export function CopyField({
           {display}
         </Text>
         <IconButton aria-label={`Copy ${label}`} size="2xs" variant="ghost" onClick={copy}>
-          <CopyIcon size={12} />
+          <Pop key={copied ? 'on' : 'off'} active={copied}>
+            <CopyIcon size={12} />
+          </Pop>
         </IconButton>
       </HStack>
     );
@@ -110,7 +113,9 @@ export function CopyField({
         onClick={copy}
         flexShrink={0}
       >
-        <CopyIcon size={iconPx} />
+        <Pop key={copied ? 'on' : 'off'} active={copied}>
+          <CopyIcon size={iconPx} />
+        </Pop>
       </IconButton>
     </HStack>
   );

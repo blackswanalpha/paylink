@@ -72,6 +72,16 @@ const config = defineConfig({
         md: { value: '0 8px 24px rgba(28, 26, 23, 0.08)' },
         lg: { value: '0 20px 48px rgba(28, 26, 23, 0.10)' },
       },
+      // Motion (frontendfeature.md §2.4 / ADR-012) — distinct `lm*` names so Chakra's own
+      // durations.fast/slow (referenced by the built-in overlay recipes) stay intact.
+      durations: {
+        lmFast: { value: '120ms' },
+        lmBase: { value: '200ms' },
+        lmSlow: { value: '320ms' },
+      },
+      easings: {
+        lmStandard: { value: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+      },
     },
     semanticTokens: {
       colors: {
@@ -116,6 +126,16 @@ const config = defineConfig({
           dangerSubtle: { value: '#F6E4DF' },
           expired: { value: '{colors.statusExpired}' },
           expiredSubtle: { value: '#EFEAE0' },
+        },
+      },
+    },
+    recipes: {
+      // Press micro-interaction on every button (ADR-012). The transform animates via Chakra's
+      // built-in `transitionProperty: "common"` (which includes transform); the global
+      // prefers-reduced-motion rule (globals.css) makes it instant when motion is reduced (F.6).
+      button: {
+        base: {
+          _active: { transform: 'scale(0.97)' },
         },
       },
     },

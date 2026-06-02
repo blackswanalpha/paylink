@@ -14,6 +14,7 @@ from typing import Any
 # Logical event names produced by paylink-service.
 PAYLINK_REQUESTED = "paylink.requested"
 PAYLINK_CREATED = "paylink.created"
+PAYLINK_VERIFIED = "paylink.verified"
 PAYLINK_CANCELLED = "paylink.cancelled"
 PAYLINK_EXPIRED = "paylink.expired"
 

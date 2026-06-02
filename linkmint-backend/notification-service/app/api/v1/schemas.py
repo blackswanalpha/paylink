@@ -17,17 +17,43 @@ class ContactModel(BaseModel):
 
 
 class NotificationIntakeRequest(BaseModel):
-    """A domain event to fan out to channels. ``data`` feeds template ``$placeholders``."""
+    """A domain event to fan out to channels. ``data`` feeds template ``$placeholders``.
+
+    Recipient keys are both optional but at least one is required: ``user_id`` (→ SMS/email) and/or
+    ``recipient_addr`` (→ the address-scoped in-app inbox). ``title``/``body``/``href`` optionally
+    override the inbox copy the service would otherwise derive from ``event_kind`` + ``data``.
+    """
 
     event_kind: str
-    user_id: str
+    user_id: str | None = None
+    recipient_addr: str | None = None
     locale: str | None = None
     data: dict[str, Any] = Field(default_factory=dict)
     contact: ContactModel | None = None
+    title: str | None = None
+    body: str | None = None
+    href: str | None = None
 
 
 class NotificationIntakeResponse(BaseModel):
     delivery_ids: list[str]
+
+
+class InboxNotificationView(BaseModel):
+    """One in-app inbox notification as returned by the read API (FE work07 wire shape)."""
+
+    id: str
+    kind: str  # success|info|warning|error
+    title: str
+    body: str | None
+    href: str | None
+    read: bool
+    created_at: datetime
+
+
+class InboxListResponse(BaseModel):
+    items: list[InboxNotificationView]
+    next_cursor: str | None
 
 
 class DeliveryView(BaseModel):

@@ -18,12 +18,14 @@ import (
 	"syscall"
 	"time"
 
+	idempotency "github.com/paylink/idempotency-go"
+	telemetry "github.com/paylink/telemetry-go"
+
 	"github.com/paylink/mpesa-adapter/internal/broadcast"
 	"github.com/paylink/mpesa-adapter/internal/config"
 	"github.com/paylink/mpesa-adapter/internal/correlation"
 	"github.com/paylink/mpesa-adapter/internal/daraja"
 	"github.com/paylink/mpesa-adapter/internal/domain"
-	"github.com/paylink/mpesa-adapter/internal/idempotency"
 	"github.com/paylink/mpesa-adapter/internal/logging"
 	"github.com/paylink/mpesa-adapter/internal/metrics"
 	"github.com/paylink/mpesa-adapter/internal/redisx"
@@ -44,6 +46,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// work18 — OpenTelemetry tracing. A no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set; never fatal.
+	otelShutdown, err := telemetry.Init(ctx, config.ServiceName, "0.1.0")
+	if err != nil {
+		log.Warn("telemetry init failed; tracing disabled", "err", err.Error())
+	}
+	defer func() { _ = otelShutdown(context.Background()) }()
+
 	// One Redis connection, two consumers: the Idempotency-Key store and the correlation store.
 	rc, err := redisx.New(cfg.RedisURL)
 	if err != nil {
@@ -51,7 +60,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer rc.Close()
-	idem := idempotency.New(rc, cfg.IdempotencyTTL)
+	idem := idempotency.New(rc, config.ServiceName, cfg.IdempotencyTTL)
 	corr := correlation.NewRedis(rc, cfg.CorrelationTTL)
 
 	// The adapter's proof-signing key. A generated (ephemeral) key won't be in the validator's
@@ -71,7 +80,7 @@ func main() {
 		log.Warn("no MPESA_ADAPTER_INTERNAL_TOKEN set — the rail→core callback endpoint is unauthenticated (dev only)")
 	}
 
-	hc := &http.Client{Timeout: cfg.HTTPTimeout}
+	hc := &http.Client{Timeout: cfg.HTTPTimeout, Transport: telemetry.WrapTransport(http.DefaultTransport)}
 	rail := daraja.NewHTTPClient(cfg.DarajaServiceURL, cfg.InternalToken, hc)
 	bcast := broadcast.NewClient(cfg.ProofValidatorURL, hc)
 	m := metrics.New()

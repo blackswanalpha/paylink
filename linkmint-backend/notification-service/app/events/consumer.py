@@ -4,9 +4,11 @@
 (``POST /v1/notifications``) and the future Kafka/SQS subscriber call (mirrors compliance-risk's
 ``ComplianceEventConsumer.handle``). Until work15's transport lands, tests drive this directly.
 
-Phase-1 routes ``paylink.verified`` + ``payment.failed``. Unknown event / missing or malformed
-``user_id`` → log + no-op (``[]``) — the documented "unknown/bad → log + no-op" contract (an
-at-least-once bus may deliver junk).
+Phase-1 routes the ``paylink.created`` / ``paylink.verified`` / ``paylink.cancelled`` /
+``payment.failed`` events. An event needs at least one recipient key: a ``recipient_addr`` (→ the
+address-scoped in-app inbox, FE work07) and/or a UUID ``user_id`` (→ the SMS/email fan-out). Unknown
+event / no usable recipient → log + no-op (``[]``) — the documented "unknown/bad → log + no-op"
+contract (an at-least-once bus may deliver junk).
 
 Payloads carry ids/metadata only; the destination ``contact`` (when present) arrives ONLY on the
 trusted HTTP intake call and is never re-emitted or logged raw.
@@ -22,9 +24,11 @@ from app.logging import get_logger
 
 log = get_logger("notify.consumer")
 
+PAYLINK_CREATED = "paylink.created"
 PAYLINK_VERIFIED = "paylink.verified"
+PAYLINK_CANCELLED = "paylink.cancelled"
 PAYMENT_FAILED = "payment.failed"
-KNOWN_EVENTS = frozenset({PAYLINK_VERIFIED, PAYMENT_FAILED})
+KNOWN_EVENTS = frozenset({PAYLINK_CREATED, PAYLINK_VERIFIED, PAYLINK_CANCELLED, PAYMENT_FAILED})
 
 
 class NotificationEventConsumer:
@@ -36,22 +40,35 @@ class NotificationEventConsumer:
             log.warning("event_unknown", event_name=name)
             return []
 
+        # SMS/email recipient (optional). A malformed user_id doesn't abort the inbox path.
+        user_id: uuid.UUID | None = None
         user_id_raw = payload.get("user_id")
-        if not user_id_raw:
-            log.warning("event_missing_user", event_name=name)
-            return []
-        try:
-            user_id = uuid.UUID(str(user_id_raw))
-        except ValueError:
-            log.warning("event_bad_user", event_name=name)
+        if user_id_raw:
+            try:
+                user_id = uuid.UUID(str(user_id_raw))
+            except ValueError:
+                log.warning("event_bad_user", event_name=name)
+
+        # In-app inbox recipient (optional) — the lowercased creator/merchant address.
+        recipient_addr_raw = payload.get("recipient_addr")
+        recipient_addr = (
+            recipient_addr_raw
+            if isinstance(recipient_addr_raw, str) and recipient_addr_raw
+            else None
+        )
+
+        if recipient_addr is None and user_id is None:
+            log.warning("event_missing_recipient", event_name=name)
             return []
 
-        data = payload.get("data") or {}
-        contact = payload.get("contact")
         return await self._service.intake(
             event_kind=name,
+            data=payload.get("data") or {},
             user_id=user_id,
+            recipient_addr=recipient_addr,
             locale=payload.get("locale"),
-            data=data,
-            contact=contact,
+            contact=payload.get("contact"),
+            title=payload.get("title"),
+            body=payload.get("body"),
+            href=payload.get("href"),
         )

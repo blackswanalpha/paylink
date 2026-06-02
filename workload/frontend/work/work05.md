@@ -1,6 +1,6 @@
 # work05 — Motion System (animations & transitions)
 
-- **Status:** todo
+- **Status:** done
 - **Owner:** service-builder
 - **Depends on:** 01, 03
 - **Flow:** [flow05](../flow/flow05.md)
@@ -44,10 +44,10 @@ respects users who opt out. The motion tokens (durations/easing) already exist i
   `MetricCard` for count-up targets.
 
 ## Acceptance criteria
-- [ ] Route transitions, overlay enter/exit, list stagger, number count-up, and micro-interactions ship as reusable wrappers/hooks.
-- [ ] **Every** animation is disabled under `prefers-reduced-motion` (verified).
-- [ ] The motion dependency choice is recorded in `decisions.md`; bundle impact noted; SSR-safe.
-- [ ] No `any`; `typecheck`/`lint`/`build` green; passes the **App** checklist + [frontendfeature.md §7](../../../frontendfeature.md).
+- [x] Route transitions, overlay enter/exit, list stagger, number count-up, and micro-interactions ship as reusable wrappers/hooks.
+- [x] **Every** animation is disabled under `prefers-reduced-motion` (verified).
+- [x] The motion dependency choice is recorded in `decisions.md`; bundle impact noted; SSR-safe.
+- [x] No `any`; `typecheck`/`lint`/`build` green; passes the **App** checklist + [frontendfeature.md §7](../../../frontendfeature.md).
 
 ## Verification
 [../../verification.md](../../verification.md) → "App": navigate (route transition), open a Modal/Drawer
@@ -56,3 +56,12 @@ all of it stills.
 
 ## Notes / log
 - The **animation exemplar** — feature items animate via these wrappers, not bespoke transitions.
+- **Done (2026-06-02).** Engine = **framer-motion** (ADR-012). New `src/motion/` (`PageTransition`,
+  `Stagger`/`StaggerItem`, `Burst`, `Pop`, `tokens`) + hooks `useReducedMotion`/`useCountUp`; route
+  transitions via `app/template.tsx`; global guard `<MotionConfig reducedMotion="user">` in Provider.
+  Theme gained `durations`/`easings` tokens + a button-press recipe; `MetricCard.countUp` and
+  `DataTable.staggerIn` opt-ins drive the dashboard; settlement success gets a champagne `Burst`; copy
+  "✓" gets a `Pop`. **Overlays keep Chakra v3's native (exit-aware) motion** — not rebuilt (no new
+  components; would fight Ark's presence/focus machinery). Correction: the motion tokens did **not**
+  already exist in `theme/system.ts` (this file said they did) — they were added here.
+  typecheck/lint/build + 62 unit tests all green.

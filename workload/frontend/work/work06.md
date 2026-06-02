@@ -1,6 +1,6 @@
 # work06 — Loading, Empty & Skeleton States System
 
-- **Status:** todo
+- **Status:** done
 - **Owner:** service-builder
 - **Depends on:** 03
 - **Flow:** [flow06](../flow/flow06.md)
@@ -37,11 +37,11 @@ boundaries — reused by every feature page.
   `TableRowsSkeleton`) and the `initializing` pattern in `components/dashboard/MerchantDashboard.tsx`.
 
 ## Acceptance criteria
-- [ ] Skeleton compositions exist for metric/table/detail/form/list layouts; a `Loadable`/`AsyncBoundary` wrapper ships.
-- [ ] An empty-state catalog covers the core surfaces with branded copy + CTA.
-- [ ] An optimistic-update helper with rollback is available and used by ≥1 mutation.
-- [ ] `aria-busy` on loading regions; no bare spinners on content; `typecheck`/`lint`/`build` green.
-- [ ] Passes the **App** checklist + [frontendfeature.md §7](../../../frontendfeature.md).
+- [x] Skeleton compositions exist for metric/table/detail/form/list layouts; a `Loadable`/`AsyncBoundary` wrapper ships.
+- [x] An empty-state catalog covers the core surfaces with branded copy + CTA.
+- [x] An optimistic-update helper with rollback is available and used by ≥1 mutation (PayLink cancel).
+- [x] `aria-busy` on loading regions; no bare spinners on content; `typecheck`/`lint`/`build` green.
+- [~] Passes the **App** checklist + [frontendfeature.md §7](../../../frontendfeature.md) — static checks (typecheck/lint/build + 91 unit tests) green; the live `docker compose --profile e2e` behavioral pass (throttle → skeletons, fresh creator → empty, cancel → optimistic flip) is the remaining step.
 
 ## Verification
 [../../verification.md](../../verification.md) → "App": throttle the network and confirm skeletons (not
@@ -50,3 +50,10 @@ flip + reconcile.
 
 ## Notes / log
 - Pairs with work04 (errors) and work07 (toasts) as the three legs of the "system UX" the product calls for.
+- Done: shipped `Loadable`+`AsyncBoundary` (`components/ui/Loadable.tsx`), per-layout skeletons
+  (`components/ui/skeletons.tsx` — metric/table/detail/form/list, each an `aria-busy` `SkeletonRegion`),
+  the empty-state catalog (`components/ui/emptyStates.tsx`), and a generic optimistic helper
+  (`hooks/useOptimisticList.ts`). Wired an optimistic **PayLink cancel** (`usePayLinks().cancel` →
+  `POST /v1/paylinks/{id}/cancel` + `get` reconcile, rollback on error) into the dashboard's Recent
+  table and a new **live `/dashboard/paylinks`** page (nav flipped `live:true`); shared columns +
+  alert-dialog confirm in `components/paylinks/`. KitchenSink gallery + 5 Vitest suites (91 tests green).

@@ -2,7 +2,7 @@
 
 > **Seeded** — expand with `/work 15` when picked up.
 
-- **Status:** todo · **Owner:** service-builder · **Stack:** Kafka/SQS + shared client libs · **Depends on:** — · **Flow:** [flow15](../flow/flow15.md)
+- **Status:** done · **Owner:** service-builder · **Stack:** Kafka via Redpanda + shared client libs (ADR-011) · **Depends on:** — · **Flow:** [flow15](../flow/flow15.md)
 - **Phase:** 1 / MVP (cross-cutting) · **Spec:** backendfeatures.md event taxonomy (ADR-004)
 
 ## Goal
@@ -37,3 +37,23 @@ publish/consume client libs for Python and Go services.
 ## Verification
 [verification.md](../verification.md) → "Full stack": publish an event from one service, observe
 it consumed by another; observe a `chain.*` event after a node event.
+
+## Notes / log
+- **Done 2026-06-02.** Transport = Kafka via **Redpanda** (ADR-011). Deliverables: `workload/catalog.md`
+  (event catalog); `linkmint-backend/eventbus-go` (franz-go, 81.8% cov) + `eventbus-python`
+  (`linkmint_eventbus`, aiokafka, 99% cov) — byte-identical envelope, golden-tested; `chain-event-mirror`
+  (Go service, 96% of tested pkgs) republishing lVM `/ws` events as `chain.*`; Redpanda + topic-init in
+  docker-compose.
+- **Producers retrofitted:** paylink/identity/merchant/compliance (Python, outbox-drain relay) +
+  payment-orchestrator/proof-validator (Go, inline publish). **Consumers:** notification/identity/
+  merchant/compliance (Python lifespan bus-consumer → existing `handle()`). All env-gated + lazily
+  imported (default `log`/disabled → existing suites untouched; all service unit suites still green).
+- **Live-verified:** paylink (kafka mode) drained 12 outbox rows → canonical envelopes on the `paylink`
+  topic; notification consumed all (group lag 0); wire format confirmed; at-least-once held on a
+  malformed event (offset uncommitted → redelivered). eventbus-go/python/mirror integration tests pass
+  on Redpanda.
+- **Follow-ups** (ADR-011 + backlog): Go transactional-outbox; paylink consuming `chain.*` (reconcile
+  from bus); Go inbound consumers (orchestrator `paylink.requested`, proof-validator
+  `payment.proof_received`, audit-log `intake.Source`); a dead-letter policy for poison messages; an
+  `admin` topic for `admin.override.*`; flipping the remaining services to kafka mode in compose
+  (Dockerfile→repo-root context + env; paylink/notification are the worked examples).

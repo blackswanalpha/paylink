@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -63,11 +63,26 @@ class Settings(BaseSettings):
     # X-Internal-Token match; when unset, the deployment network is the only control.
     internal_shared_secret: SecretStr | None = None
 
+    # In-app inbox (FE work07) auth seam: the gateway injects the authenticated caller as
+    # X-Creator-Addr (mirrors paylink-service). When no gateway sits in front (local direct dev),
+    # this optional fallback scopes the inbox; if neither is present, the read API returns 401.
+    dev_creator_addr: str | None = None
+
     # Event publisher seam (forward-symmetry; emits no domain events in Phase 1).
     event_publisher_mode: Literal["log", "noop"] = "log"
 
+    # work15 — bus consumer. When enabled, a lifespan task subscribes to the bus and feeds events to
+    # NotificationEventConsumer.handle (the same chokepoint as the HTTP intake). Shared (unprefixed)
+    # KAFKA_BROKERS matches eventbus-go / chain-event-mirror / docker-compose.
+    event_consumer_enabled: bool = False
+    kafka_brokers: str = Field(default="", validation_alias=AliasChoices("KAFKA_BROKERS"))
+
     # Idempotency
     idempotency_ttl_seconds: int = 24 * 60 * 60
+
+    @property
+    def kafka_broker_list(self) -> list[str]:
+        return [b.strip() for b in self.kafka_brokers.split(",") if b.strip()]
 
     def console_fail_set(self) -> frozenset[str]:
         """Recipients the console provider force-fails (deterministic retry-test hook)."""

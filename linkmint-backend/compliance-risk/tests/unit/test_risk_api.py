@@ -6,11 +6,11 @@ from collections.abc import AsyncIterator, Iterator
 import fakeredis.aioredis
 import pytest
 from fastapi.testclient import TestClient
+from linkmint_idempotency import IdempotencyStore
 
 from app.deps import get_idempotency, get_services
 from app.domain.services import ServiceDeps, Services, build_services
 from app.events.stub import NoopPublisher
-from app.idempotency import IdempotencyStore
 from app.main import create_app
 from app.security.provider_crypto import ProviderCipher
 from tests._support import FakeRepository, make_settings, noop_commit
@@ -108,7 +108,9 @@ def gated_client() -> Iterator[tuple[TestClient, FakeRepository]]:
     repo = FakeRepository()
     app = create_app(settings)
     cipher = ProviderCipher.from_settings(settings)
-    idem = IdempotencyStore(fakeredis.aioredis.FakeRedis(decode_responses=True), 3600)
+    idem = IdempotencyStore(
+        fakeredis.aioredis.FakeRedis(decode_responses=True), "compliance-risk", 3600
+    )
     with TestClient(app) as test_client:
 
         async def _services_override() -> AsyncIterator[Services]:

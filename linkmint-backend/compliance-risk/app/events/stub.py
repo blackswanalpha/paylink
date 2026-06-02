@@ -23,6 +23,8 @@ class NoopPublisher(Publisher):
 
 
 def build_publisher(settings: Settings) -> Publisher:
-    if settings.event_publisher_mode == "noop":
+    # In "kafka" mode the inline seam goes quiet — the outbox-drain relay (app/events/relay.py) is
+    # the real Kafka producer. "log" keeps the in-process echo; "noop" silences it.
+    if settings.event_publisher_mode in ("noop", "kafka"):
         return NoopPublisher()
     return LogPublisher()

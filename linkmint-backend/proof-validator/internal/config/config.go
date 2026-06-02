@@ -39,6 +39,9 @@ type Config struct {
 	LogLevel       string        // PROOF_VALIDATOR_LOG_LEVEL
 	IdempotencyTTL time.Duration // PROOF_VALIDATOR_IDEMPOTENCY_TTL_SECONDS
 	HTTPTimeout    time.Duration // PROOF_VALIDATOR_HTTP_TIMEOUT_SECONDS
+
+	EventPublisherMode string // PROOF_VALIDATOR_EVENT_PUBLISHER_MODE — "log" (default) | "kafka" (work15)
+	KafkaBrokers       string // KAFKA_BROKERS — shared bus brokers (comma-separated); kafka mode
 }
 
 // Load reads configuration from the environment, applying defaults that make a local `go run`
@@ -95,6 +98,8 @@ func Load() (Config, error) {
 		LogLevel:              env("PROOF_VALIDATOR_LOG_LEVEL", "info"),
 		IdempotencyTTL:        ttl,
 		HTTPTimeout:           httpTimeout,
+		EventPublisherMode:    env("PROOF_VALIDATOR_EVENT_PUBLISHER_MODE", "log"),
+		KafkaBrokers:          os.Getenv("KAFKA_BROKERS"),
 	}, nil
 }
 

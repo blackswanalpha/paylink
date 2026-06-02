@@ -24,8 +24,8 @@ buildable today.
 | 02 | [work02](work/work02.md) / [flow02](flow/flow02.md) — App Shell & Navigation | Foundation | §1 / fe02 | — | 01 | **done** |
 | 03 | [work03](work/work03.md) / [flow03](flow/flow03.md) — Core Component Library | Foundation | §2.5 | — | 01,02 | **done** |
 | 04 | [work04](work/work04.md) / [flow04](flow/flow04.md) — Error & Feedback System | System UX | §1 / F.5 | — | 03 | **done** |
-| 05 | [work05](work/work05.md) / [flow05](flow/flow05.md) — Motion System (animations & transitions) | System UX | §2.4 | — | 01,03 | todo |
-| 06 | [work06](work/work06.md) / [flow06](flow/flow06.md) — Loading, Empty & Skeleton States | System UX | §1 | — | 03 | todo |
+| 05 | [work05](work/work05.md) / [flow05](flow/flow05.md) — Motion System (animations & transitions) | System UX | §2.4 | — | 01,03 | **done** |
+| 06 | [work06](work/work06.md) / [flow06](flow/flow06.md) — Loading, Empty & Skeleton States | System UX | §1 | — | 03 | **done** |
 | 07 | [work07](work/work07.md) / [flow07](flow/flow07.md) — Notifications & Toasts System | System UX | §1 | — | 03,04 | todo |
 
 ## FE-Phase 1 — Enabler

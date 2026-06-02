@@ -18,6 +18,7 @@ type Metrics struct {
 	httpDuration   *prometheus.HistogramVec
 	proofsReceived *prometheus.CounterVec
 	settlementTx   *prometheus.CounterVec
+	chainTxs       *prometheus.CounterVec
 }
 
 // New builds a Metrics with a fresh registry and registered collectors.
@@ -42,8 +43,14 @@ func New() *Metrics {
 			Name: "settlement_tx_total",
 			Help: "Settlement transactions broadcast to the lVM by result.",
 		}, []string{"result"}),
+		// work18 — the standard cross-service counter for chain submissions; mirrors settlement_tx_total
+		// under the spec's shared name so one dashboard query spans every chain-submitting service.
+		chainTxs: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "chain_txs_submitted_total",
+			Help: "Transactions submitted to the lVM chain by result.",
+		}, []string{"result"}),
 	}
-	reg.MustRegister(m.httpRequests, m.httpDuration, m.proofsReceived, m.settlementTx)
+	reg.MustRegister(m.httpRequests, m.httpDuration, m.proofsReceived, m.settlementTx, m.chainTxs)
 	return m
 }
 
@@ -59,9 +66,11 @@ func (m *Metrics) ProofReceived(result string) {
 	m.proofsReceived.WithLabelValues(result).Inc()
 }
 
-// SettlementTx records a settlement broadcast attempt ("broadcast" | "error").
+// SettlementTx records a settlement broadcast attempt ("broadcast" | "error"). It also feeds the
+// standard chain_txs_submitted_total (work18) so the result is visible under the shared metric name.
 func (m *Metrics) SettlementTx(result string) {
 	m.settlementTx.WithLabelValues(result).Inc()
+	m.chainTxs.WithLabelValues(result).Inc()
 }
 
 // Middleware records HTTP request counts and durations. routeOf maps a request to a low

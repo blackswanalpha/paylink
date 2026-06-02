@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-import httpx
 import redis.asyncio as aioredis
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from linkmint_telemetry import ObservabilityMiddleware, init_telemetry, traced_async_client
 from prometheus_client import make_asgi_app
 from sqlalchemy import text
 
@@ -57,12 +57,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     configure_logging(settings.log_level, settings.service_name)
     log = get_logger()
+    # work18 — OpenTelemetry tracing. A no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set.
+    app.state.otel_shutdown = init_telemetry(settings.service_name, "0.1.0")
 
     engine = make_engine(settings.database_url)
     app.state.engine = engine
     app.state.sessionmaker = make_sessionmaker(engine)
     app.state.redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-    app.state.http_client = httpx.AsyncClient(timeout=settings.upstream_timeout_seconds)
+    # work18 — outbound client injects W3C trace context onto the read-through calls to upstreams.
+    app.state.http_client = traced_async_client(timeout=settings.upstream_timeout_seconds)
     app.state.providers = build_registry(settings, app.state.http_client)
     app.state.audit = build_audit_sink(settings, app.state.http_client)
     app.state.jwt_verifier = JwtVerifier(
@@ -84,6 +87,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.http_client.aclose()
         await app.state.redis.aclose()
         await engine.dispose()
+        app.state.otel_shutdown()
         log.info("shutdown")
 
 
@@ -91,6 +95,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="admin-backoffice", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings or get_settings()
     app.add_middleware(RequestIdMiddleware)
+    # work18 — added after RequestIdMiddleware so it wraps it (outermost): starts the server span
+    # and seeds X-Request-Id with the trace id, which RequestIdMiddleware then adopts as the
+    # correlation id (one id across logs, the envelope, the response header, and Tempo).
+    app.add_middleware(
+        ObservabilityMiddleware,
+        service_name=app.state.settings.service_name,
+        routes=app.routes,
+    )
     install_error_handlers(app)
     app.include_router(search_router)
     app.include_router(entities_router)

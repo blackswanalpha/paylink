@@ -7,9 +7,9 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi.responses import JSONResponse
+from linkmint_idempotency import IdempotencyStore, fingerprint
 
 from app.errors import AppError, ErrorCode
-from app.idempotency import IdempotencyStore, fingerprint
 
 
 def parse_uuid(value: str, *, field: str = "id") -> uuid.UUID:

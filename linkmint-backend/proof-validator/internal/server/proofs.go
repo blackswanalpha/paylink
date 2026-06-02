@@ -2,17 +2,28 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	idempotency "github.com/paylink/idempotency-go"
 	"github.com/paylink/proof-validator/internal/domain"
 	"github.com/paylink/proof-validator/internal/httpx"
-	"github.com/paylink/proof-validator/internal/idempotency"
 	"github.com/paylink/proof-validator/internal/proof"
 )
+
+// idemError maps an idempotency-library error to this service's HTTP envelope: a conflict becomes
+// 409 IDEMPOTENT_CONFLICT, any other (backend) error a 500. The library is transport-free, so the
+// status mapping lives here at the service boundary.
+func idemError(err error) error {
+	if errors.Is(err, idempotency.ErrConflict) {
+		return httpx.NewError(httpx.CodeIdempotentConflict, err.Error(), nil)
+	}
+	return httpx.NewError(httpx.CodeInternalError, err.Error(), nil)
+}
 
 const (
 	maxBodyBytes = 1 << 20 // 1 MiB
@@ -74,7 +85,7 @@ func (s *Server) submitProof(w http.ResponseWriter, r *http.Request) {
 	fp := idempotency.Fingerprint(raw)
 	cached, err := s.idem.Begin(ctx, submitRoute, idemKey, fp)
 	if err != nil {
-		httpx.WriteError(w, r, err)
+		httpx.WriteError(w, r, idemError(err))
 		return
 	}
 	if cached != nil {

@@ -74,6 +74,12 @@ exclude = ["alembic/", "tests/"]
 module = ["celery", "celery.*"]
 ignore_missing_imports = true
 
+# work15 — the shared Kafka client lib is installed into the runtime image only (consumer enabled),
+# not the dev/test env (the default disabled path never imports it). Treat it as untyped.
+[[tool.mypy.overrides]]
+module = ["linkmint_eventbus", "linkmint_eventbus.*"]
+ignore_missing_imports = true
+
 # ── Tests / coverage ──
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

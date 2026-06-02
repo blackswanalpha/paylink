@@ -9,11 +9,11 @@
  */
 
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
 import { ConflictError } from '@linkmint/sdk';
 import type { Payment } from '@linkmint/sdk';
 import { useAppStore } from '@/store/app';
 import type { DisplayError } from '@/lib/errors';
+import { notify } from '@/lib/notify';
 import { reportError } from '@/lib/reportError';
 
 export type InitiateState =
@@ -36,13 +36,13 @@ export function useInitiatePayment(plId: string): InitiateState {
       .then((payment) => {
         if (cancelled) return;
         setState({ status: 'recorded', payment });
-        toast.success('Payment intent recorded', { description: `rail: mpesa · ${payment.id}` });
+        notify.success('Payment intent recorded', { description: `rail: mpesa · ${payment.id}` });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         if (err instanceof ConflictError && err.code === 'PAYLINK_NOT_PAYABLE') {
           setState({ status: 'not_payable' });
-          toast.info('Payment intent not recorded', {
+          notify.info('Payment intent not recorded', {
             description:
               'Known work35 limitation — the PayLink is already PENDING on-chain. Settlement is tracked from the PayLink itself.',
           });

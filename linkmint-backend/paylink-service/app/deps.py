@@ -6,12 +6,12 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from fastapi import Depends, Header, Request
+from linkmint_idempotency import IdempotencyStore
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
 from app.db.repository import PayLinkRepository
 from app.domain.service import PayLinkService
-from app.idempotency import IdempotencyStore
 
 
 def get_settings(request: Request) -> Settings:
@@ -36,6 +36,7 @@ async def get_service(request: Request) -> AsyncIterator[PayLinkService]:
             publisher=request.app.state.publisher,
             settings=request.app.state.settings,
             compliance=request.app.state.compliance_client,
+            notify=request.app.state.notification_client,
         )
 
 

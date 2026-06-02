@@ -1,12 +1,12 @@
 'use client';
 
-/** Wraps `paylinks.create` with loading/error state, a success toast, and wizard advancement. */
+/** Wraps `paylinks.create` with a loading→success toast (work07), inline error, wizard advancement. */
 
 import { useCallback, useState } from 'react';
-import { toast } from 'sonner';
 import type { CreatePayLinkInput } from '@linkmint/sdk';
 import { useAppStore } from '@/store/app';
 import type { DisplayError } from '@/lib/errors';
+import { notify } from '@/lib/notify';
 import { reportError } from '@/lib/reportError';
 import type { StepData } from '@/types/wizard';
 
@@ -31,6 +31,10 @@ export function useCreatePayLink() {
       const c = client;
       if (!c) return;
       setState({ status: 'loading' });
+      // Loading→success toast (work07). On failure we DISMISS this toast and let the error system
+      // render the single surface inline (KycGate / ErrorBanner) — so there's no competing error
+      // toast (F.5). The success transitions this same toast in place via its id.
+      const toastId = notify.loading('Creating PayLink…');
       try {
         const input: CreatePayLinkInput = {
           receiver: values.receiver,
@@ -48,11 +52,12 @@ export function useCreatePayLink() {
           initialStatus: result.status,
         };
         setState({ status: 'idle' });
-        toast.success('PayLink created', { description: result.pl_id });
+        notify.success('PayLink created', { id: toastId, description: result.pl_id });
         created(data);
       } catch (err) {
         // Route through the error system (work04): surface inline on the form, so a 402 KYC_REQUIRED
         // renders the contextual KycGate while a 401 still escalates to the global re-auth modal.
+        notify.dismiss(toastId);
         const { error } = reportError(err, {
           surface: 'inline',
           context: 'while creating a PayLink',

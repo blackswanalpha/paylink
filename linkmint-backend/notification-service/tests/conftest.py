@@ -7,9 +7,9 @@ from collections.abc import Iterator
 import fakeredis.aioredis
 import pytest
 from fastapi.testclient import TestClient
+from linkmint_idempotency import IdempotencyStore
 
 from app.config import Settings
-from app.idempotency import IdempotencyStore
 from app.main import create_app
 from tests._support import EnqueueSpy, FakeRepository, install_overrides, make_settings
 
@@ -31,7 +31,9 @@ def enqueue_spy() -> EnqueueSpy:
 
 @pytest.fixture
 def idem_store() -> IdempotencyStore:
-    return IdempotencyStore(fakeredis.aioredis.FakeRedis(decode_responses=True), 3600)
+    return IdempotencyStore(
+        fakeredis.aioredis.FakeRedis(decode_responses=True), "notification-service", 3600
+    )
 
 
 @pytest.fixture

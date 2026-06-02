@@ -12,11 +12,11 @@ import uuid
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from linkmint_idempotency import fingerprint
 
 from app.api.v1.schemas import DeliveryView, NotificationIntakeRequest
 from app.deps import ConsumerDep, IdemKey, IdempotencyDep, InternalGateDep, RepoDep
 from app.errors import AppError, ErrorCode
-from app.idempotency import fingerprint
 from app.redaction import mask_recipient
 
 router = APIRouter()
@@ -41,9 +41,13 @@ async def intake(
     try:
         payload: dict[str, object] = {
             "user_id": body.user_id,
+            "recipient_addr": body.recipient_addr,
             "locale": body.locale,
             "data": body.data,
             "contact": body.contact.model_dump(exclude_none=True) if body.contact else None,
+            "title": body.title,
+            "body": body.body,
+            "href": body.href,
         }
         ids = await consumer.handle(body.event_kind, payload)
         result = {"delivery_ids": [str(delivery_id) for delivery_id in ids]}

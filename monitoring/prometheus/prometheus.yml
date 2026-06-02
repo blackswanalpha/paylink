@@ -1,0 +1,43 @@
+# work18 — Prometheus scrape config for the local LinkMint stack. Mounted into the `prometheus`
+# service (docker-compose `observability` profile). Targets are compose DNS names on the shared
+# network. Every LinkMint service exposes Prometheus metrics at /metrics (Python via
+# prometheus_client.make_asgi_app, Go via promhttp); the lVM node exposes them on :9090 when run with
+# --metrics; Kong exposes them on its status listener :8100 (requires the Kong prometheus plugin).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # All app services (default + e2e profiles). A service that isn't running shows as a down target —
+  # expected when its profile is not up.
+  - job_name: linkmint-services
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "paylink-service:8000"
+          - "identity-service:8090"
+          - "merchant-onboarding:8091"
+          - "admin-backoffice:8092"
+          - "compliance-risk:8093"
+          - "audit-log-service:8094"
+          - "notification-service:8095"
+          - "payment-orchestrator:8080"
+          - "proof-validator:8081"
+          - "mpesa-adapter:8082"
+
+  # The lVM node (run paylink-chain with --metrics; rides the e2e profile). Namespace: linkm_*.
+  - job_name: lvm-node
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["paylink-chain:9090"]
+
+  # Kong gateway status/metrics listener. Down until the Kong prometheus plugin is enabled in
+  # kong.yml (documented follow-up); the scrape target is wired so it lights up when it is.
+  - job_name: api-gateway
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api-gateway:8100"]

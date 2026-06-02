@@ -69,6 +69,28 @@ export {
 } from './StatusPill';
 export type { StatusPillProps, StatusKind } from './StatusPill';
 
+// --- Loading, empty & skeleton states (work06) ---
+export { Loadable, AsyncBoundary } from './Loadable';
+export type { LoadableProps, AsyncBoundaryProps } from './Loadable';
+export {
+  SkeletonRegion,
+  MetricGridSkeleton,
+  TableSkeleton,
+  DetailPanelSkeleton,
+  FormSkeleton,
+  ListCardSkeleton,
+} from './skeletons';
+export type { SkeletonRegionProps } from './skeletons';
+export {
+  EMPTY_STATES,
+  CatalogEmptyState,
+  NoPayLinksEmpty,
+  NoPaymentsEmpty,
+  NoSearchResultsEmpty,
+  NoApiKeysEmpty,
+} from './emptyStates';
+export type { EmptySurface, CatalogEmptyStateProps } from './emptyStates';
+
 // --- Live in src/components/ (re-exported so the kit has a single import surface) ---
 export { KeyValueRow } from '../KeyValueRow';
 export type { KeyValueRowProps } from '../KeyValueRow';

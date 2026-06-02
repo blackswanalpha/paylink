@@ -9,9 +9,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	idempotency "github.com/paylink/idempotency-go"
+	telemetry "github.com/paylink/telemetry-go"
+
+	"github.com/paylink/proof-validator/internal/config"
 	"github.com/paylink/proof-validator/internal/domain"
 	"github.com/paylink/proof-validator/internal/httpx"
-	"github.com/paylink/proof-validator/internal/idempotency"
 	"github.com/paylink/proof-validator/internal/metrics"
 )
 
@@ -47,6 +50,9 @@ func (s *Server) Handler() http.Handler { return s.router }
 func (s *Server) routes() http.Handler {
 	r := chi.NewRouter()
 
+	// work18 — telemetry first: extract inbound trace context, start the server span, and seed
+	// X-Request-Id with the trace id so the RequestID middleware below adopts it.
+	r.Use(telemetry.Middleware(config.ServiceName, routeLabel))
 	r.Use(httpx.RequestID(s.log))
 	r.Use(httpx.RequestLogger)
 	r.Use(httpx.Recoverer)

@@ -15,7 +15,7 @@ from decimal import Decimal
 from functools import lru_cache
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
@@ -80,10 +80,18 @@ class Settings(BaseSettings):
     score_block_threshold: float = 0.8
     score_review_threshold: float = 0.5
 
-    # ── Event publisher seam (real Kafka/SQS transport deferred to work15). The durable outbox is
-    # the compliance.compliance_events table, written in-transaction; this only selects the live
-    # seam. ──
-    event_publisher_mode: Literal["log", "noop"] = "log"
+    # ── Event publisher seam (work15). "log"/"noop" use the in-process LogPublisher/Noop; "kafka"
+    # starts the outbox-drain relay that drains compliance.compliance_events to the bus (ADR-011).
+    # The durable outbox is always written in-transaction regardless of mode. ──
+    event_publisher_mode: Literal["log", "noop", "kafka"] = "log"
+    # Shared (unprefixed) bus brokers, matching eventbus-go / chain-event-mirror / docker-compose.
+    kafka_brokers: str = Field(default="", validation_alias=AliasChoices("KAFKA_BROKERS"))
+    # work15 — bus consumer toggle (a lifespan task subscribes and calls the service's handle()).
+    event_consumer_enabled: bool = False
+
+    @property
+    def kafka_broker_list(self) -> list[str]:
+        return [b.strip() for b in self.kafka_brokers.split(",") if b.strip()]
 
     # ── Idempotency ──
     idempotency_ttl_seconds: int = 24 * 60 * 60

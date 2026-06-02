@@ -6,7 +6,12 @@
 
 import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import { MotionGlobalConfig } from 'framer-motion';
 import '@testing-library/jest-dom/vitest';
+
+// Make framer-motion animations resolve instantly under jsdom (no rAF timing): motion components
+// render their final state and `animate()` jumps to its target. Keeps motion assertions deterministic.
+MotionGlobalConfig.skipAnimations = true;
 
 afterEach(() => {
   cleanup();

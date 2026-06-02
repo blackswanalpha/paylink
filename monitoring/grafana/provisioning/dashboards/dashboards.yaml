@@ -1,0 +1,12 @@
+# work18 — load the starter dashboards bundled under /var/lib/grafana/dashboards.
+apiVersion: 1
+
+providers:
+  - name: linkmint
+    orgId: 1
+    folder: LinkMint
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

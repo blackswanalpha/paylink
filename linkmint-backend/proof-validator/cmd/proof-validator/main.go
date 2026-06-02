@@ -16,12 +16,16 @@ import (
 	"syscall"
 	"time"
 
+	eventbus "github.com/paylink/eventbus-go"
+
+	idempotency "github.com/paylink/idempotency-go"
+	telemetry "github.com/paylink/telemetry-go"
+
 	"github.com/paylink/proof-validator/internal/autostake"
 	"github.com/paylink/proof-validator/internal/chain"
 	"github.com/paylink/proof-validator/internal/config"
 	"github.com/paylink/proof-validator/internal/domain"
 	"github.com/paylink/proof-validator/internal/events"
-	"github.com/paylink/proof-validator/internal/idempotency"
 	"github.com/paylink/proof-validator/internal/logging"
 	"github.com/paylink/proof-validator/internal/metrics"
 	"github.com/paylink/proof-validator/internal/proof"
@@ -43,6 +47,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// work18 — OpenTelemetry tracing. A no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set; never fatal.
+	otelShutdown, err := telemetry.Init(ctx, config.ServiceName, "0.1.0")
+	if err != nil {
+		log.Warn("telemetry init failed; tracing disabled", "err", err.Error())
+	}
+	defer func() { _ = otelShutdown(context.Background()) }()
+
 	// PostgreSQL store + migrations.
 	pg, err := pgstore.New(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -62,7 +73,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer rc.Close()
-	idem := idempotency.New(rc, cfg.IdempotencyTTL)
+	idem := idempotency.New(rc, config.ServiceName, cfg.IdempotencyTTL)
 
 	// Signer (the validator's own key) + proof verifier (trusted adapter keys).
 	sgnr, generated, err := signer.Build(cfg.SignerMode, cfg.ChainSignerKey)
@@ -82,11 +93,28 @@ func main() {
 		log.Warn("no trusted proof pubkeys configured — all proofs will be rejected (set PROOF_VALIDATOR_TRUSTED_PUBKEYS)")
 	}
 
-	// Outbound chain client + nonce manager + event publisher + metrics.
-	hc := &http.Client{Timeout: cfg.HTTPTimeout}
+	// Outbound chain client + nonce manager + event publisher + metrics. The transport injects W3C
+	// trace context onto the chain RPC calls (work18).
+	hc := &http.Client{Timeout: cfg.HTTPTimeout, Transport: telemetry.WrapTransport(http.DefaultTransport)}
 	chainClient := chain.NewClient(cfg.ChainRPCURL, hc)
 	nonce := chain.NewNonceManager(chainClient)
-	publisher := events.NewLogPublisher(log)
+
+	// Domain-event publisher (work15). Default "log" is the in-process seam; "kafka" produces to the
+	// bus via eventbus-go (its Publish matches domain.Publisher exactly, so it drops in unchanged).
+	var publisher domain.Publisher = events.NewLogPublisher(log)
+	if cfg.EventPublisherMode == "kafka" {
+		kpub, perr := eventbus.NewPublisher(
+			eventbus.Config{Brokers: eventbus.SplitBrokers(cfg.KafkaBrokers), ClientID: config.ServiceName},
+			config.ServiceName, log,
+		)
+		if perr != nil {
+			log.Error("kafka publisher init failed", "err", perr.Error())
+			os.Exit(1)
+		}
+		defer kpub.Close()
+		publisher = kpub
+		log.Info("event publisher: kafka", "brokers", cfg.KafkaBrokers)
+	}
 	m := metrics.New()
 
 	svc := domain.NewService(pg, chainClient, verifier, sgnr, nonce, publisher, log,

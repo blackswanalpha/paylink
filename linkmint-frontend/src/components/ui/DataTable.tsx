@@ -19,8 +19,14 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { Box, Button, Flex, Table } from '@chakra-ui/react';
+import { motion } from 'framer-motion';
 import { ChevronDown, ChevronUp } from 'react-feather';
 import { Skeleton } from './Skeleton';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { DURATION, EASE, STAGGER_STEP } from '@/motion/tokens';
+
+/** A motion-enabled table row for the entrance stagger (see the `staggerIn` prop). */
+const MotionTableRow = motion.create(Table.Row);
 
 export type ColumnAlign = 'start' | 'center' | 'end';
 export type SortDirection = 'asc' | 'desc';
@@ -55,6 +61,11 @@ export interface DataTableProps<T> {
   size?: 'sm' | 'md' | 'lg';
   /** Hover highlight on rows. @default false */
   interactive?: boolean;
+  /**
+   * Animate real data rows in with an entrance stagger on mount (work05). Off by default; skeleton
+   * and empty states never animate (F.7). Reduced motion shows rows instantly (F.6).
+   */
+  staggerIn?: boolean;
   onRowClick?: (row: T) => void;
   /** Controlled sort. Omit (undefined) for internal sort state; `null` = controlled & unsorted. */
   sort?: DataTableSort | null;
@@ -96,6 +107,7 @@ export function DataTable<T>({
   rowKey,
   size = 'md',
   interactive = false,
+  staggerIn = false,
   onRowClick,
   sort,
   onSortChange,
@@ -137,6 +149,7 @@ export function DataTable<T>({
   }
 
   const colCount = columns.length;
+  const reduced = useReducedMotion();
 
   return (
     <Box>
@@ -202,19 +215,36 @@ export function DataTable<T>({
                 <Table.Cell colSpan={colCount}>{empty}</Table.Cell>
               </Table.Row>
             ) : (
-              sortedRows.map((row, rowIndex) => (
-                <Table.Row
-                  key={rowKey(row)}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  cursor={onRowClick ? 'pointer' : undefined}
-                >
-                  {columns.map((col) => (
-                    <Table.Cell key={col.key} textAlign={col.align ?? 'start'}>
-                      {col.render(row, rowIndex)}
-                    </Table.Cell>
-                  ))}
-                </Table.Row>
-              ))
+              sortedRows.map((row, rowIndex) => {
+                const cells = columns.map((col) => (
+                  <Table.Cell key={col.key} textAlign={col.align ?? 'start'}>
+                    {col.render(row, rowIndex)}
+                  </Table.Cell>
+                ));
+                const handlers = {
+                  onClick: onRowClick ? () => onRowClick(row) : undefined,
+                  cursor: onRowClick ? ('pointer' as const) : undefined,
+                };
+                return staggerIn ? (
+                  <MotionTableRow
+                    key={rowKey(row)}
+                    initial={reduced ? false : { opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: DURATION.base,
+                      ease: EASE,
+                      delay: reduced ? 0 : rowIndex * STAGGER_STEP,
+                    }}
+                    {...handlers}
+                  >
+                    {cells}
+                  </MotionTableRow>
+                ) : (
+                  <Table.Row key={rowKey(row)} {...handlers}>
+                    {cells}
+                  </Table.Row>
+                );
+              })
             )}
           </Table.Body>
         </Table.Root>

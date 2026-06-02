@@ -11,9 +11,13 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { LinkMintClient, PayLink, PayLinkStatus } from '@linkmint/sdk';
+import type { CancelPayLinkResult, LinkMintClient, PayLink, PayLinkStatus } from '@linkmint/sdk';
 import { isAbortError, type DisplayError } from '@/lib/errors';
 import { reportError } from '@/lib/reportError';
+import { useOptimisticList } from '@/hooks/useOptimisticList';
+
+/** Stable key fn (module scope so the optimistic helper's `run` only changes with `items`). */
+const payLinkKey = (pl: PayLink): string => pl.pl_id;
 
 export interface PayLinkAggregates {
   total: number;
@@ -86,6 +90,8 @@ export interface UsePayLinksResult {
   loading: boolean;
   error: DisplayError | null;
   refresh: () => void;
+  /** Optimistically cancel a CREATED/PENDING PayLink (flip → CANCELLED, reconcile, rollback on error). */
+  cancel: (plId: string) => Promise<boolean>;
 }
 
 export function usePayLinks(client: LinkMintClient | null, creator?: string): UsePayLinksResult {
@@ -138,7 +144,40 @@ export function usePayLinks(client: LinkMintClient | null, creator?: string): Us
     void load(controller.signal);
   }, [load]);
 
+  // Optimistic cancel: flip the row to CANCELLED immediately, commit via the SDK, then reconcile the
+  // authoritative record; on error the helper rolls the row back and we route the failure inline (F.5).
+  const optimistic = useOptimisticList<PayLink>(items, setItems, payLinkKey);
+
+  const cancel = useCallback(
+    (plId: string): Promise<boolean> => {
+      if (!client) {
+        return Promise.resolve(false);
+      }
+      return optimistic.run<CancelPayLinkResult>({
+        match: (pl) => pl.pl_id === plId,
+        apply: (pl) => ({ ...pl, status: 'CANCELLED' }),
+        commit: () => client.paylinks.cancel(plId),
+        // CancelPayLinkResult is only { pl_id, status } — re-read for the full record; if the read
+        // fails, still trust the cancel result's authoritative status over the optimistic guess.
+        reconcile: async (res, snapshot) => {
+          try {
+            return await client.paylinks.get(plId);
+          } catch {
+            return { ...snapshot, status: res.status };
+          }
+        },
+        onError: (err) => {
+          const { error: reported, surface } = reportError(err, { surface: 'inline' });
+          if (surface === 'inline') {
+            setError(reported);
+          }
+        },
+      });
+    },
+    [client, optimistic],
+  );
+
   const aggregates = useMemo(() => computeAggregates(items, Date.now()), [items]);
 
-  return { items, aggregates, loading, error, refresh };
+  return { items, aggregates, loading, error, refresh, cancel };
 }
