@@ -3,11 +3,12 @@
 /** Step 1 — controlled create-PayLink form with client-side validation. Calls the SDK via the hook. */
 
 import { useMemo, useState, type FormEvent } from 'react';
-import { Button, Card, Field, Heading, Input, Stack, Text } from '@chakra-ui/react';
+import { Button, Card, Heading, Input, Stack, Text } from '@chakra-ui/react';
 import { PlusCircle } from 'react-feather';
 import { useCreatePayLink } from '@/hooks/useCreatePayLink';
 import { clientConfig } from '@/lib/env';
-import { ErrorBanner } from './ErrorBanner';
+import { classifyError } from '@/lib/errors';
+import { ErrorBanner, FormField, KycGate } from '@/components/ui';
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
@@ -63,19 +64,21 @@ export function CreatePayLinkForm() {
         </Card.Header>
         <Card.Body>
           <Stack gap={4}>
-            <Field.Root required invalid={Boolean(show(errors.receiver))}>
-              <Field.Label>Receiver address</Field.Label>
+            <FormField label="Receiver address" required error={show(errors.receiver)}>
               <Input
                 value={receiver}
                 onChange={(e) => setReceiver(e.target.value)}
                 placeholder="0x1111111111111111111111111111111111111111"
                 fontFamily="mono"
               />
-              <Field.ErrorText>{show(errors.receiver)}</Field.ErrorText>
-            </Field.Root>
+            </FormField>
 
-            <Field.Root required invalid={Boolean(show(errors.amount))}>
-              <Field.Label>Amount (minor units)</Field.Label>
+            <FormField
+              label="Amount (minor units)"
+              required
+              helperText={`e.g. 1000 = ${currency || 'KES'} 10.00`}
+              error={show(errors.amount)}
+            >
               <Input
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
@@ -83,38 +86,38 @@ export function CreatePayLinkForm() {
                 min={1}
                 inputMode="numeric"
               />
-              <Field.HelperText>e.g. 1000 = {currency || 'KES'} 10.00</Field.HelperText>
-              <Field.ErrorText>{show(errors.amount)}</Field.ErrorText>
-            </Field.Root>
+            </FormField>
 
-            <Field.Root required invalid={Boolean(show(errors.currency))}>
-              <Field.Label>Currency</Field.Label>
+            <FormField label="Currency" required error={show(errors.currency)}>
               <Input
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
                 maxLength={8}
                 textTransform="uppercase"
               />
-              <Field.ErrorText>{show(errors.currency)}</Field.ErrorText>
-            </Field.Root>
+            </FormField>
 
-            <Field.Root required invalid={Boolean(show(errors.expiry))}>
-              <Field.Label>Expiry</Field.Label>
+            <FormField label="Expiry" required error={show(errors.expiry)}>
               <Input
                 value={expiry}
                 onChange={(e) => setExpiry(e.target.value)}
                 type="datetime-local"
               />
-              <Field.ErrorText>{show(errors.expiry)}</Field.ErrorText>
-            </Field.Root>
+            </FormField>
 
-            {state.status === 'error' ? <ErrorBanner error={state.error} /> : null}
+            {state.status === 'error' ? (
+              classifyError(state.error).surface === 'kyc' ? (
+                <KycGate error={state.error} />
+              ) : (
+                <ErrorBanner error={state.error} />
+              )
+            ) : null}
           </Stack>
         </Card.Body>
         <Card.Footer>
           <Button
             type="submit"
-            colorPalette="teal"
+            colorPalette="emerald"
             loading={loading}
             loadingText="Creating…"
             gap={2}

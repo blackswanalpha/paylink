@@ -6,7 +6,8 @@ import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import type { CreatePayLinkInput } from '@linkmint/sdk';
 import { useAppStore } from '@/store/app';
-import { toDisplayError, type DisplayError } from '@/lib/errors';
+import type { DisplayError } from '@/lib/errors';
+import { reportError } from '@/lib/reportError';
 import type { StepData } from '@/types/wizard';
 
 export interface CreateValues {
@@ -50,9 +51,13 @@ export function useCreatePayLink() {
         toast.success('PayLink created', { description: result.pl_id });
         created(data);
       } catch (err) {
-        const error = toDisplayError(err);
+        // Route through the error system (work04): surface inline on the form, so a 402 KYC_REQUIRED
+        // renders the contextual KycGate while a 401 still escalates to the global re-auth modal.
+        const { error } = reportError(err, {
+          surface: 'inline',
+          context: 'while creating a PayLink',
+        });
         setState({ status: 'error', error });
-        toast.error(error.title, { description: error.message });
       }
     },
     [client, created],

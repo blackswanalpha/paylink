@@ -112,3 +112,73 @@ export function toDisplayError(err: unknown): DisplayError {
 export function isAbortError(err: unknown): boolean {
   return err instanceof LinkMintConnectionError && /aborted/i.test(err.message);
 }
+
+// --- Error classification (work04) --------------------------------------------------------------
+// The decision layer on top of `toDisplayError`: a pure mapping from a normalized `DisplayError` to
+// *how* it should surface. Keeping this side-effect-free makes the whole policy unit-testable; the
+// dispatch (toast / overlay / inline render) lives in `reportError` and the hooks.
+
+/** Where an error should be shown. `reauth`/`kyc` are app-wide overlays; the rest are local. */
+export type ErrorSurface = 'inline' | 'toast' | 'page' | 'reauth' | 'kyc';
+
+export interface ErrorClassification {
+  /** The default surface, derived purely from the envelope/kind. */
+  surface: ErrorSurface;
+  /** True only for 429 / 5xx / transport. Retry still requires the caller to supply a read fn. */
+  canRetry: boolean;
+  /** True when status forces the surface (401) — a caller hint cannot downgrade it. */
+  forced: boolean;
+  /** Seconds to wait before retry is allowed (429 `Retry-After`); undefined otherwise. */
+  retryAfter?: number;
+}
+
+/**
+ * Map a `DisplayError` to its presentation. Pure and total — every kind/status lands somewhere.
+ *
+ * Rationale baked in: 409 is a *mutation* collision, so it is never retryable even though it's a 4xx
+ * (the idempotent-reads-only rule); 401 is `forced` because an expired session must interrupt the
+ * whole app; 402 (`KYC_REQUIRED`) defaults to the global KYC overlay but is *not* forced, so a screen
+ * can opt into an inline gate via `reportError(err, { surface: 'inline' })`.
+ */
+export function classifyError(e: DisplayError): ErrorClassification {
+  if (e.kind === 'transport') {
+    return { surface: 'toast', canRetry: true, forced: false };
+  }
+  if (e.kind === 'unknown') {
+    return { surface: 'toast', canRetry: false, forced: false };
+  }
+  switch (e.status) {
+    case 401:
+      return { surface: 'reauth', canRetry: false, forced: true };
+    case 402:
+      return { surface: 'kyc', canRetry: false, forced: false };
+    case 429:
+      return { surface: 'inline', canRetry: true, forced: false, retryAfter: e.retryAfter };
+    case 400:
+    case 403:
+    case 404:
+    case 409:
+      return { surface: 'inline', canRetry: false, forced: false };
+    default:
+      if (typeof e.status === 'number' && e.status >= 500) {
+        return { surface: 'toast', canRetry: true, forced: false };
+      }
+      return { surface: 'inline', canRetry: false, forced: false };
+  }
+}
+
+/**
+ * A short, human-shareable id for a *render crash* — those have no envelope, so there is no
+ * `trace_id` to surface. Support correlates by this id + timestamp. Browser-only; falls back to
+ * `Math.random` where `crypto.randomUUID` is unavailable.
+ */
+export function newErrorId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID().slice(0, 8).toUpperCase();
+    }
+  } catch {
+    // fall through to the Math.random path
+  }
+  return Math.random().toString(36).slice(2, 10).toUpperCase();
+}

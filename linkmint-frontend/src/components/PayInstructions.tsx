@@ -92,11 +92,13 @@ export function PayInstructions() {
               </Alert.Content>
             </Alert.Root>
           ) : null}
-          {initiate.status === 'error' ? <ErrorBanner error={initiate.error} /> : null}
+          {initiate.status === 'error' ? (
+            <ErrorBanner error={initiate.error} status="warning" />
+          ) : null}
         </Stack>
       </Card.Body>
       <Card.Footer>
-        <Button colorPalette="teal" onClick={proceed} gap={2} width="full">
+        <Button colorPalette="emerald" onClick={proceed} gap={2} width="full">
           I’ve sent the payment — watch settlement <ArrowRight size={18} />
         </Button>
       </Card.Footer>
