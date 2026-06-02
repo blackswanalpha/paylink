@@ -1,10 +1,10 @@
-# The repo root is a Docker build context for services whose Dockerfile copies the paylink-chain
-# module (for the `replace` directive) plus their own module: proof-validator (work03) and the
-# mpesa-adapter CORE (work04). Exclude everything else so the context stays small.
+# The repo root is a Docker build context for services whose Dockerfile copies a sibling module (for
+# a `replace` directive or the shared eventbus lib) plus their own module: proof-validator (work03),
+# the mpesa-adapter CORE (work04), and — work15 — paylink-service, notification-service,
+# payment-orchestrator, chain-event-mirror, and the eventbus-go/eventbus-python libs. Exclude only
+# what none of those images build from, so the context stays small.
 
-# Sibling backend services / clients / docs those images do not build from.
-linkmint-backend/paylink-service/
-linkmint-backend/payment-orchestrator/
+# Clients / docs the repo-root images do not build from.
 # Keep adapters/mpesa (the Go core builds from the repo root); exclude any other adapters and the
 # Node rail service (it builds from its own context, not the repo root).
 adapters/*

@@ -58,3 +58,12 @@ Thumbs.db
 
 # ── Tooling (machine-local) ──────────────────────────────────────────
 .claude/settings.local.json
+
+# ── Internal planning / spec docs (kept local, not in repo) ──────────
+/CLAUDE.md
+/prd.md
+/spec.md
+/system.md
+/blockchainfeature.md
+/backendfeatures.md
+/frontendfeature.md

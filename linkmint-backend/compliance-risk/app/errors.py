@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from linkmint_idempotency import IdempotencyConflict
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.logging import get_logger, trace_id_var
@@ -100,6 +101,16 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.http_status,
             content=envelope(exc.code.value, exc.message, exc.details),
+        )
+
+    @app.exception_handler(IdempotencyConflict)
+    async def _handle_idempotency_conflict(
+        _request: Request, exc: IdempotencyConflict
+    ) -> JSONResponse:
+        # The shared idempotency lib (work17) is transport-free; map its conflict to our envelope.
+        return JSONResponse(
+            status_code=_HTTP_STATUS[ErrorCode.IDEMPOTENT_CONFLICT],
+            content=envelope(ErrorCode.IDEMPOTENT_CONFLICT.value, str(exc)),
         )
 
     @app.exception_handler(RequestValidationError)

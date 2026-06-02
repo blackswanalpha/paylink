@@ -14,10 +14,10 @@ import (
 
 	"github.com/paylink/paylink-chain/pkg/lvm"
 
+	idempotency "github.com/paylink/idempotency-go"
 	"github.com/paylink/proof-validator/internal/chain"
 	"github.com/paylink/proof-validator/internal/domain"
 	"github.com/paylink/proof-validator/internal/httpx"
-	"github.com/paylink/proof-validator/internal/idempotency"
 	"github.com/paylink/proof-validator/internal/metrics"
 	"github.com/paylink/proof-validator/internal/proof"
 	"github.com/paylink/proof-validator/internal/server"
@@ -108,7 +108,7 @@ func (f *fakeRedis) Ping(context.Context) error { return nil }
 func newServer(t *testing.T, ch domain.ChainClient, v domain.ProofVerifier, ready ...server.ReadyCheck) http.Handler {
 	t.Helper()
 	svc := domain.NewService(memory.New(), ch, v, stubSigner{}, stubNonce{}, nil, nil, domain.WithCrossCheck(false))
-	idem := idempotency.New(&fakeRedis{m: map[string]string{}}, time.Hour)
+	idem := idempotency.New(&fakeRedis{m: map[string]string{}}, "proof-validator", time.Hour)
 	if ready == nil {
 		ready = []server.ReadyCheck{{Name: "ok", Check: func(context.Context) error { return nil }}}
 	}

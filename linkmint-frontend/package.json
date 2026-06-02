@@ -19,6 +19,7 @@
     "@emotion/cache": "^11.13.0",
     "@emotion/react": "^11.13.0",
     "@linkmint/sdk": "file:../sdks/javascript",
+    "framer-motion": "^12.40.0",
     "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

@@ -6,6 +6,7 @@ import { Button, Card, Heading, HStack, Spinner, Stack, Text } from '@chakra-ui/
 import { CheckCircle, RotateCcw, XCircle } from 'react-feather';
 import { useAppStore } from '@/store/app';
 import { useSettlementStatus } from '@/hooks/useSettlementStatus';
+import { Burst } from '@/motion';
 import { StatusBadge } from './StatusBadge';
 import { ErrorBanner } from './ErrorBanner';
 import { KeyValueRow } from './KeyValueRow';
@@ -45,10 +46,12 @@ export function SettlementStatus() {
 
           {settlement.isTerminal ? (
             status === 'VERIFIED' ? (
-              <HStack color="green.500" gap={2}>
-                <CheckCircle size={18} />
-                <Text fontWeight="medium">Settled on-chain.</Text>
-              </HStack>
+              <Burst play>
+                <HStack color="green.500" gap={2}>
+                  <CheckCircle size={18} />
+                  <Text fontWeight="medium">Settled on-chain.</Text>
+                </HStack>
+              </Burst>
             ) : (
               <HStack color="red.500" gap={2}>
                 <XCircle size={18} />

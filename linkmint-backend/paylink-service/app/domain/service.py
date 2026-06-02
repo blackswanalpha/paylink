@@ -22,6 +22,7 @@ from app.errors import AppError, ErrorCode
 from app.events import publisher as ev
 from app.events.publisher import Publisher
 from app.logging import get_logger
+from app.notifications.client import NotificationClient
 
 log = get_logger("paylink.service")
 
@@ -71,6 +72,7 @@ class PayLinkService:
         publisher: Publisher,
         settings: Settings,
         compliance: ComplianceClient | None = None,
+        notify: NotificationClient | None = None,
     ) -> None:
         self._repo = repo
         self._commit = commit
@@ -80,6 +82,28 @@ class PayLinkService:
         self._publisher = publisher
         self._settings = settings
         self._compliance = compliance
+        self._notify = notify
+
+    async def _emit_notification(self, event_kind: str, row: PayLinkRow) -> None:
+        """Best-effort in-app notification (FE work07), scoped to the PayLink's creator address.
+
+        Never raises (the client swallows failures) — a notification outage must not affect the
+        PayLink lifecycle. No-op unless notify is wired (``PAYLINK_NOTIFY_ENABLED``).
+        """
+        if self._notify is None:
+            return
+        try:
+            await self._notify.notify(
+                event_kind=event_kind,
+                recipient_addr=row.creator_addr,
+                data={"pl_id": row.pl_id, "amount": int(row.amount), "currency": row.currency},
+                dedupe_id=f"{row.pl_id}:{event_kind}",
+                href="/dashboard/paylinks",
+            )
+        except Exception as exc:  # noqa: BLE001 - notification is best-effort; never fail the op
+            log.warning(
+                "notify_emit_failed", event_kind=event_kind, pl_id=row.pl_id, error=str(exc)
+            )
 
     # ── create ──
     async def create(self, cmd: CreateCommand) -> PayLinkRow:
@@ -123,6 +147,9 @@ class PayLinkService:
         await self._repo.add_event(pl_id, ev.PAYLINK_REQUESTED, requested_payload)
         await self._commit()
         await self._publisher.publish(ev.PAYLINK_REQUESTED, requested_payload)
+        # In-app notification (FE work07): fire once the row is durably created, independent of
+        # chain submission, so the merchant's notification center reflects it immediately.
+        await self._emit_notification(ev.PAYLINK_CREATED, row)
 
         if self._settings.chain_submit_enabled:
             chain_tx_hash = await self._submit_create(
@@ -246,6 +273,9 @@ class PayLinkService:
         await self._commit()
         if new is OffChainStatus.EXPIRED:
             await self._publisher.publish(ev.PAYLINK_EXPIRED, {"pl_id": row.pl_id})
+        if new is OffChainStatus.VERIFIED:
+            # Settlement alert (FE work07) — the highest-value in-app notification.
+            await self._emit_notification(ev.PAYLINK_VERIFIED, row)
 
     # ── cancel ──
     async def cancel(self, pl_id: str, caller_addr: str) -> PayLinkRow:
@@ -275,6 +305,7 @@ class PayLinkService:
         await self._repo.add_event(pl_id, ev.PAYLINK_CANCELLED, cancelled_payload)
         await self._commit()
         await self._publisher.publish(ev.PAYLINK_CANCELLED, cancelled_payload)
+        await self._emit_notification(ev.PAYLINK_CANCELLED, row)
         return row
 
     async def _submit_cancel(self, pl_id: str) -> str:

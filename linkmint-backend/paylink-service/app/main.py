@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
-import httpx
 import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from linkmint_idempotency import IdempotencyStore
+from linkmint_telemetry import ObservabilityMiddleware, init_telemetry, traced_async_client
 from prometheus_client import make_asgi_app
 from sqlalchemy import text
 
@@ -21,8 +23,8 @@ from app.config import Settings, get_settings
 from app.db.session import make_engine, make_sessionmaker
 from app.errors import install_error_handlers
 from app.events.stub import build_publisher
-from app.idempotency import IdempotencyStore
 from app.logging import RequestIdMiddleware, configure_logging, get_logger
+from app.notifications.client import NotificationClient
 
 
 @asynccontextmanager
@@ -30,17 +32,42 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     configure_logging(settings.log_level, settings.service_name)
     log = get_logger()
+    # work18 — OpenTelemetry tracing. A no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set.
+    app.state.otel_shutdown = init_telemetry(settings.service_name, "0.1.0")
 
     engine = make_engine(settings.database_url)
     app.state.engine = engine
     app.state.sessionmaker = make_sessionmaker(engine)
     app.state.redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-    app.state.idempotency = IdempotencyStore(app.state.redis, settings.idempotency_ttl_seconds)
-    app.state.http = httpx.AsyncClient(timeout=10.0)
+    app.state.idempotency = IdempotencyStore(
+        app.state.redis, settings.service_name, settings.idempotency_ttl_seconds
+    )
+    # work18 — the outbound client injects W3C trace context, so the HTTP hop to compliance-risk /
+    # notification-service continues this request's trace.
+    app.state.http = traced_async_client(timeout=10.0)
     app.state.chain_client = ChainClient(settings.chain_rpc_url, app.state.http)
     app.state.signer = build_signer(settings)
     app.state.nonces = NonceManager(app.state.chain_client)
     app.state.publisher = build_publisher(settings)
+
+    # work15 — outbox-drain relay (drains paylink.paylink_events to the bus). Lazily imported so the
+    # default "log" mode needs no broker / linkmint_eventbus, keeping existing tests broker-free.
+    app.state.relay_task = None
+    if settings.event_publisher_mode == "kafka":
+        from linkmint_eventbus import KafkaPublisher
+
+        from app.events.relay import OutboxRelay
+
+        relay = OutboxRelay(
+            app.state.sessionmaker,
+            KafkaPublisher(settings.kafka_broker_list, source=settings.service_name),
+            schema="paylink",
+            table="paylink_events",
+            key_column="pl_id",
+        )
+        app.state.relay_task = asyncio.create_task(relay.run())
+        log.info("outbox_relay_started", brokers=settings.kafka_broker_list)
+
     app.state.compliance_client = (
         ComplianceClient(
             settings.compliance_service_url,
@@ -56,19 +83,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else None
     )
 
+    app.state.notification_client = (
+        NotificationClient(
+            settings.notify_service_url,
+            app.state.http,
+            internal_token=(
+                settings.notify_internal_token.get_secret_value()
+                if settings.notify_internal_token
+                else None
+            ),
+            timeout=settings.notify_timeout_seconds,
+        )
+        if settings.notify_enabled
+        else None
+    )
+
     log.info(
         "startup",
         signer_address=app.state.signer.address,
         chain_rpc=settings.chain_rpc_url,
         chain_submit_enabled=settings.chain_submit_enabled,
         compliance_check_enabled=settings.compliance_check_enabled,
+        notify_enabled=settings.notify_enabled,
     )
     try:
         yield
     finally:
+        if app.state.relay_task is not None:
+            app.state.relay_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await app.state.relay_task
         await app.state.http.aclose()
         await app.state.redis.aclose()
         await engine.dispose()
+        app.state.otel_shutdown()
         log.info("shutdown")
 
 
@@ -76,6 +124,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="paylink-service", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings or get_settings()
     app.add_middleware(RequestIdMiddleware)
+    # work18 — added after RequestIdMiddleware so it wraps it (outermost): starts the server span
+    # and seeds X-Request-Id with the trace id, which RequestIdMiddleware then adopts as the
+    # correlation id (one id across logs, the envelope, the response header, and Tempo).
+    app.add_middleware(
+        ObservabilityMiddleware,
+        service_name=app.state.settings.service_name,
+        routes=app.routes,
+    )
     install_error_handlers(app)
     app.include_router(paylinks_router)
 

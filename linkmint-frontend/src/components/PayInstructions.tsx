@@ -4,9 +4,9 @@
 
 import { Alert, Button, Card, Code, Heading, HStack, Stack, Text } from '@chakra-ui/react';
 import { ArrowRight, Smartphone } from 'react-feather';
-import { toast } from 'sonner';
 import { useAppStore } from '@/store/app';
 import { clientConfig } from '@/lib/env';
+import { notify } from '@/lib/notify';
 import { formatMinorUnits } from '@/lib/money';
 import { useInitiatePayment } from '@/hooks/useInitiatePayment';
 import { ErrorBanner } from './ErrorBanner';
@@ -23,10 +23,10 @@ export function PayInstructions() {
 
   const copy = (label: string, value: string): void => {
     if (!navigator.clipboard) {
-      toast.error('Clipboard unavailable');
+      notify.error('Clipboard unavailable');
       return;
     }
-    void navigator.clipboard.writeText(value).then(() => toast.success(`${label} copied`));
+    void navigator.clipboard.writeText(value).then(() => notify.success(`${label} copied`));
   };
 
   return (
@@ -92,11 +92,13 @@ export function PayInstructions() {
               </Alert.Content>
             </Alert.Root>
           ) : null}
-          {initiate.status === 'error' ? <ErrorBanner error={initiate.error} /> : null}
+          {initiate.status === 'error' ? (
+            <ErrorBanner error={initiate.error} status="warning" />
+          ) : null}
         </Stack>
       </Card.Body>
       <Card.Footer>
-        <Button colorPalette="teal" onClick={proceed} gap={2} width="full">
+        <Button colorPalette="emerald" onClick={proceed} gap={2} width="full">
           I’ve sent the payment — watch settlement <ArrowRight size={18} />
         </Button>
       </Card.Footer>

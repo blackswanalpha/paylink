@@ -27,6 +27,74 @@ services:
       timeout: 3s
       retries: 10
 
+  # work15 — Kafka-compatible event bus (Redpanda; ADR-011). Single node, KRaft (no ZooKeeper).
+  # Two listeners: internal `redpanda:9092` for compose services, external `localhost:19092` for
+  # host tools (rpk / the eventbus-python integration test). Topics are the 10 domain topics, created
+  # by the one-shot `redpanda-init` below so producers/consumers never race auto-creation.
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --default-log-level=info
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+    ports:
+      - "19092:19092" # host access (rpk --brokers localhost:19092)
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # One-shot: create the 10 domain topics (idempotent). Consumers/producers depend on this completing
+  # so the topics exist deterministically (1 partition / 1 replica locally).
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.7
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for t in paylink payment chain merchant compliance identity notification escrow settlement fee; do
+          rpk topic create "$$t" --brokers redpanda:9092 -p 1 -r 1 || true
+        done
+        echo "redpanda topics ready"
+    restart: "no"
+
+  # work16 — one-shot: create the shared `ledger` schema + append-only ledger_entries table and its
+  # UPDATE/DELETE-reject trigger (idempotent), then exit. No service owns the ledger schema, so a
+  # dedicated migrator (built from ledger-go) applies it. Services that read/write the ledger gate on
+  # `ledger-migrate: condition: service_completed_successfully` (none wired yet — per-service posting
+  # is work16-out-of-scope). The Python ledger lib ships a byte-identical migration for its own tests.
+  ledger-migrate:
+    build:
+      context: ./linkmint-backend/ledger-go
+    environment:
+      LEDGER_DATABASE_URL: postgres://paylink:paylink@postgres:5432/paylink?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # Optional Redpanda web console (topic/consumer-group inspection). Enable with `--profile tools`.
+  redpanda-console:
+    profiles: ["tools"]
+    image: redpandadata/console:v2.7.2
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8099:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
   # Optional single-validator lVM devnet (live chain read-through). Enable with `--profile e2e`.
   # Pinned to a deterministic single-validator genesis (requiredValidations=1) and validator key so
   # the proof-validator (same key) can settle PayLinks. Use a fresh `chaindata` volume when changing
@@ -46,6 +114,11 @@ services:
       - "b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291"
       - "--block-interval"
       - "1000"
+      # work18 — expose Prometheus metrics (linkm_*) so the observability profile's Prometheus
+      # scrapes the node at paylink-chain:9090.
+      - "--metrics"
+      - "--metrics-addr"
+      - ":9090"
     # Reached over the compose network as http://paylink-chain:8545; also published to the host on
     # 8545 so the e2e settlement test (test/e2e_settlement_test.go) can drive the chain RPC directly.
     ports:
@@ -64,9 +137,43 @@ services:
       timeout: 3s
       retries: 20
 
+  # work15 — chain-event-mirror. Subscribes to the lVM datastream (/ws) and republishes each chain
+  # event as a chain.<kind> domain event on the bus. Needs the chain, so it rides the `e2e` profile.
+  # Internal-only (no /v1, never behind the gateway). Build context is the repo root so the Dockerfile
+  # can copy both this module and the eventbus-go lib it `replace`s.
+  chain-event-mirror:
+    profiles: ["e2e"]
+    build:
+      context: .
+      dockerfile: linkmint-backend/chain-event-mirror/Dockerfile
+    environment:
+      CEM_HTTP_ADDR: ":8096"
+      CEM_CHAIN_WS_URL: ws://paylink-chain:8545/ws
+      KAFKA_BROKERS: redpanda:9092
+      CEM_LOG_LEVEL: INFO
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: chain-event-mirror
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # CEM_CHAIN_EVENT_KINDS unset → mirror ALL kinds. Production narrows to settlement-relevant
+      # kinds (e.g. "paylink.verified,paylink.cancelled,paylink.failed,paylink.voted,fee.collected").
+    depends_on:
+      paylink-chain:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8096/internal/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   paylink-service:
     build:
-      context: ./linkmint-backend/paylink-service
+      context: .
+      dockerfile: linkmint-backend/paylink-service/Dockerfile
     environment:
       PAYLINK_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
       PAYLINK_REDIS_URL: redis://redis:6379/0
@@ -81,6 +188,17 @@ services:
       PAYLINK_COMPLIANCE_CHECK_ENABLED: "true"
       PAYLINK_COMPLIANCE_SERVICE_URL: http://compliance-risk:8093
       PAYLINK_COMPLIANCE_INTERNAL_TOKEN: devnet-internal-token
+      # FE work07 — emit best-effort in-app notifications (created/verified/cancelled) to
+      # notification-service's trusted intake. The token matches NOTIFY_INTERNAL_SHARED_SECRET.
+      PAYLINK_NOTIFY_ENABLED: "true"
+      PAYLINK_NOTIFY_SERVICE_URL: http://notification-service:8095
+      PAYLINK_NOTIFY_INTERNAL_TOKEN: devnet-internal-token
+      # work15 — publish domain events to the bus via the outbox-drain relay (drains paylink_events).
+      PAYLINK_EVENT_PUBLISHER_MODE: kafka
+      KAFKA_BROKERS: redpanda:9092
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: paylink-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
       - "8000:8000"
     depends_on:
@@ -90,6 +208,10 @@ services:
         condition: service_healthy
       compliance-risk:
         condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -114,7 +236,8 @@ services:
   # JWKS fetch replaces this static pinning (tracked follow-up).
   identity-service:
     build:
-      context: ./linkmint-backend/identity-service
+      context: .
+      dockerfile: linkmint-backend/identity-service/Dockerfile
     environment:
       IDENTITY_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
       IDENTITY_REDIS_URL: redis://redis:6379/0
@@ -122,6 +245,9 @@ services:
       IDENTITY_JWT_AUDIENCE: linkmint
       IDENTITY_OAUTH_FAKE: "true"
       IDENTITY_LOG_LEVEL: INFO
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: identity-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       # Dev-only fixed RSA-2048 signing key (see note above) — shared with merchant-onboarding.
       IDENTITY_JWT_PRIVATE_KEY_PEM: |-
         -----BEGIN PRIVATE KEY-----
@@ -181,7 +307,8 @@ services:
   # Default profile — no chain dependency.
   merchant-onboarding:
     build:
-      context: ./linkmint-backend/merchant-onboarding
+      context: .
+      dockerfile: linkmint-backend/merchant-onboarding/Dockerfile
     environment:
       MERCHANT_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
       MERCHANT_REDIS_URL: redis://redis:6379/0
@@ -189,6 +316,9 @@ services:
       MERCHANT_JWT_AUDIENCE: linkmint
       MERCHANT_OBJECT_STORE_MODE: local
       MERCHANT_LOG_LEVEL: INFO
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: merchant-onboarding
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       # Dev-only public key matching identity-service's pinned private key (see note above).
       MERCHANT_JWT_PUBLIC_KEY_PEM: |-
         -----BEGIN PUBLIC KEY-----
@@ -230,7 +360,9 @@ services:
   # Default profile — no chain dependency.
   admin-backoffice:
     build:
-      context: ./linkmint-backend/admin-backoffice
+      # work18 — repo-root context so the Dockerfile can COPY the shared telemetry-python lib.
+      context: .
+      dockerfile: linkmint-backend/admin-backoffice/Dockerfile
     environment:
       ADMIN_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
       ADMIN_REDIS_URL: redis://redis:6379/0
@@ -245,6 +377,9 @@ services:
       ADMIN_MERCHANT_SERVICE_URL: http://merchant-onboarding:8091
       ADMIN_PAYLINK_SERVICE_URL: http://paylink-service:8000
       ADMIN_PAYMENT_ORCHESTRATOR_URL: http://payment-orchestrator:8080
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: admin-backoffice
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       # Default-deny: empty = no one is staff until granted in admin.staff. For a quick local demo,
       # set "<your-jwt-sub>:superuser" (dev-only convenience; NOT a real secret).
       ADMIN_DEV_STAFF_GRANTS: ""
@@ -291,7 +426,8 @@ services:
   # HMAC-signed (COMPLIANCE_CALLBACK_SECRETS, per-provider). Default profile — no chain dependency.
   compliance-risk:
     build:
-      context: ./linkmint-backend/compliance-risk
+      context: .
+      dockerfile: linkmint-backend/compliance-risk/Dockerfile
     environment:
       COMPLIANCE_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
       COMPLIANCE_REDIS_URL: redis://redis:6379/0
@@ -306,6 +442,9 @@ services:
       COMPLIANCE_INTERNAL_SHARED_SECRET: devnet-internal-token
       COMPLIANCE_AML_CUMULATIVE_THRESHOLD: "150000"
       COMPLIANCE_AML_WINDOW_HOURS: "720"
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: compliance-risk
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       # Dev-only public key matching identity-service's pinned private key (see identity note above).
       COMPLIANCE_JWT_PUBLIC_KEY_PEM: |-
         -----BEGIN PUBLIC KEY-----
@@ -344,7 +483,8 @@ services:
   # work15 seam (disabled). Owns the `audit` schema. Default profile — no chain dependency.
   audit-log-service:
     build:
-      context: ./linkmint-backend/audit-log-service
+      context: .
+      dockerfile: linkmint-backend/audit-log-service/Dockerfile
     environment:
       AUDIT_HTTP_ADDR: ":8094"
       AUDIT_DATABASE_URL: postgres://paylink:paylink@postgres:5432/paylink?sslmode=disable
@@ -355,6 +495,9 @@ services:
       AUDIT_JWT_AUDIENCE: linkmint
       AUDIT_READER_ROLES: "admin,compliance"
       AUDIT_LOG_LEVEL: INFO
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: audit-log-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       # Dev-only public key matching identity-service's pinned private key (see identity note above).
       AUDIT_JWT_PUBLIC_KEY_PEM: |-
         -----BEGIN PUBLIC KEY-----
@@ -382,13 +525,162 @@ services:
       retries: 10
       start_period: 15s
 
+  # work14 — notification-service (Python/FastAPI + Celery/Redis). Multi-channel delivery (SMS/email
+  # via sandbox console providers) of domain events: template render → durable delivery log → retry
+  # with exponential backoff (30s/2m/10m/1h/6h, max 5). POST /v1/notifications is the work15 bus
+  # stand-in (X-Internal-Token, ADR-009); the GET reads a delivery (recipient masked). Owns the
+  # `notify` schema. Webhooks/push are Phase 2. The Celery broker is a DEDICATED Redis DB (/1) so it
+  # never collides with the idempotency cache (/0). The web container runs migrations on start.
+  notification-service:
+    build:
+      context: .
+      dockerfile: linkmint-backend/notification-service/Dockerfile
+    environment:
+      NOTIFY_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
+      NOTIFY_REDIS_URL: redis://redis:6379/0
+      NOTIFY_CELERY_BROKER_URL: redis://redis:6379/1
+      NOTIFY_SMS_PROVIDER: console
+      NOTIFY_EMAIL_PROVIDER: console
+      NOTIFY_RECIPIENT_RESOLVER: inline
+      # Intake gate (ADR-009). Trusted callers / the future work15 bus subscriber send this token.
+      NOTIFY_INTERNAL_SHARED_SECRET: devnet-internal-token
+      NOTIFY_LOG_LEVEL: INFO
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: notification-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # work15 — consume domain events from the bus (paylink.verified, payment.failed) via a lifespan
+      # bus-consumer task feeding the same NotificationEventConsumer.handle as the HTTP intake.
+      NOTIFY_EVENT_CONSUMER_ENABLED: "true"
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8095:8095"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8095/internal/readyz').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
+  # work14 — notification-worker: the Celery worker (SAME image) that runs deliveries + backoff
+  # retries. Waits for notification-service to be healthy (it applies the migrations) before consuming
+  # the `notify` queue from the Redis broker (DB /1).
+  notification-worker:
+    build:
+      context: .
+      dockerfile: linkmint-backend/notification-service/Dockerfile
+    entrypoint: ["./worker-entrypoint.sh"]
+    # The worker has no HTTP surface — replace the image's inherited web healthcheck with a Celery
+    # worker ping (over the Redis broker) so `up --wait` can gate on it.
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "celery -A app.celeryapp.app:celery_app inspect ping -d celery@$$(hostname) >/dev/null 2>&1 || exit 1"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    environment:
+      # The worker uses the DB + the Celery broker only (no idempotency cache → no NOTIFY_REDIS_URL).
+      NOTIFY_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
+      NOTIFY_CELERY_BROKER_URL: redis://redis:6379/1
+      NOTIFY_SMS_PROVIDER: console
+      NOTIFY_EMAIL_PROVIDER: console
+      NOTIFY_RECIPIENT_RESOLVER: inline
+      NOTIFY_LOG_LEVEL: INFO
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: notification-worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+
+  # work19 — invoice-subscription (Python/FastAPI). Multi-line invoices that aggregate into a single
+  # backing PayLink (DRAFT→OPEN→PAID|VOID|OVERDUE). On finalize it calls paylink-service to mint the
+  # PayLink; settlement truth comes from the chain — the work15 bus consumer marks an invoice PAID on
+  # chain.paylink.verified (published by chain-event-mirror). Publishes invoice.* via the outbox relay
+  # (EVENT_PUBLISHER_MODE=kafka). A lifespan sweeper flips OPEN→OVERDUE past due_at. JWT *consumer*
+  # (verifier-only): INVOICE_JWT_PUBLIC_KEY_PEM is the public half of the FIXED dev keypair pinned on
+  # identity-service. Owns the `invoice` schema. Subscriptions are deferred to work31. Default profile.
+  invoice-subscription:
+    build:
+      context: .
+      dockerfile: linkmint-backend/invoice-subscription/Dockerfile
+    environment:
+      INVOICE_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
+      INVOICE_REDIS_URL: redis://redis:6379/0
+      INVOICE_JWT_ISSUER: linkmint-identity
+      INVOICE_JWT_AUDIENCE: linkmint
+      INVOICE_LOG_LEVEL: INFO
+      # work01 — the aggregated PayLink is minted here on finalize.
+      INVOICE_PAYLINK_SERVICE_URL: http://paylink-service:8000
+      # work15 — publish invoice.* via the outbox relay; consume chain.paylink.verified → mark PAID.
+      INVOICE_EVENT_PUBLISHER_MODE: kafka
+      INVOICE_EVENT_CONSUMER_ENABLED: "true"
+      KAFKA_BROKERS: redpanda:9092
+      INVOICE_OVERDUE_SWEEP_ENABLED: "true"
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: invoice-subscription
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # Dev-only public key matching identity-service's pinned private key (see identity note above).
+      INVOICE_JWT_PUBLIC_KEY_PEM: |-
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4ICsoMfDlpFGxfKDkwaO
+        CSicE31hGuzVJ5xSxfB1Ybl2yBg5pVMsOZ/Wg5xrW0Hiwi3Us7GWJowpLSCxizw7
+        dgmkrSmKbVU9z/q2nnJcb0gAWCKreBQ0AWS1K3onUXV2ACkp2fmRktpdTU9ZEkCm
+        dXcegWENBM4saL+UhFOHu0/U85ImhlqRxw+ccXwuq9V0GowWYjVGgUB0FOwd2wKY
+        XdgdirHZQ4w7MwJ4zyF3P/8g3+9mcuWRcLc3Onx7g2h7IcUp0rw9phOx/8bsGodw
+        FWx3y3ulTGriFc796lQb/7t8PZpYONULjPw6tABKVBC29hm4uh1M2Ab36UFrjZyV
+        DQIDAQAB
+        -----END PUBLIC KEY-----
+    ports:
+      - "8096:8096"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+      paylink-service:
+        condition: service_started
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8096/internal/readyz').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
   # work02 — payment lifecycle conductor (Go/chi). Reacts to lVM chain events and reconciles
   # against on-chain truth (read-through RPC + WS). The chain devnet is `--profile e2e` only;
   # without it readyz reports the chain dep down (liveness/healthz stays up). With `--profile e2e`
   # the node is reachable and the WS subscriber advances lifecycle on settle/cancel/fail.
   payment-orchestrator:
     build:
-      context: ./linkmint-backend/payment-orchestrator
+      context: .
+      dockerfile: linkmint-backend/payment-orchestrator/Dockerfile
     environment:
       PAYMENT_HTTP_ADDR: ":8080"
       PAYMENT_DATABASE_URL: postgres://paylink:paylink@postgres:5432/paylink?sslmode=disable
@@ -400,6 +692,9 @@ services:
       # work04 — registered MPesa rail adapter (config-only registry; logged at boot, not called).
       PAYMENT_ADAPTER_MPESA_URL: http://mpesa-adapter:8082
       PAYMENT_LOG_LEVEL: INFO
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: payment-orchestrator
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
       - "8080:8080"
     depends_on:
@@ -428,6 +723,8 @@ services:
     environment:
       GATEWAY_PAYLINK_SERVICE_URL: http://paylink-service:8000
       GATEWAY_PAYMENT_ORCHESTRATOR_URL: http://payment-orchestrator:8080
+      # FE work07 — route /v1/notifications* to the in-app inbox (auth required; X-Creator-Addr injected).
+      GATEWAY_NOTIFICATION_SERVICE_URL: http://notification-service:8095
       GATEWAY_REDIS_HOST: redis
       GATEWAY_REDIS_PORT: "6379"
       GATEWAY_JWT_ISSUER: linkmint-dev
@@ -456,6 +753,8 @@ services:
       paylink-service:
         condition: service_healthy
       payment-orchestrator:
+        condition: service_healthy
+      notification-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "kong", "health"]
@@ -486,6 +785,9 @@ services:
       PROOF_VALIDATOR_PAYLINK_CROSSCHECK: "true"
       PROOF_VALIDATOR_AUTO_STAKE: "true"
       PROOF_VALIDATOR_LOG_LEVEL: INFO
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: proof-validator
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
       - "8081:8081"
     depends_on:
@@ -548,6 +850,9 @@ services:
       MPESA_ADAPTER_SIGNER_KEY: 3f7a1c0d9e8b6a5f4d3c2b1a09f8e7d6c5b4a3928170615243f5e6d7c8b9a0f1
       MPESA_ADAPTER_DEFAULT_SHORTCODE: "174379"
       MPESA_ADAPTER_LOG_LEVEL: info
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: mpesa-adapter
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
       - "8082:8082"
     depends_on:
@@ -564,6 +869,56 @@ services:
       retries: 10
       start_period: 15s
 
+  # ──────────────────────────────────────────────────────────────────────────────────────────────
+  # work18 — local observability stack (Prometheus + Tempo + Grafana). Enable with
+  # `--profile observability`. Metrics scraping works as soon as it is up. To ALSO export traces, set
+  # OTEL_EXPORTER_OTLP_ENDPOINT so the services ship spans to Tempo (it is empty by default, so a
+  # normal `docker compose up` runs telemetry as a no-op with no OTLP connection attempts):
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317 \
+  #     docker compose --profile observability --profile e2e up -d
+  # Then: Grafana http://localhost:3000 → Explore → Tempo (follow a trace); Prometheus
+  # http://localhost:9091/targets (confirm every /metrics target is UP).
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2h
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9091:9090" # host 9091 (the lVM node owns 9090); targets/UI at http://localhost:9091
+    restart: unless-stopped
+
+  tempo:
+    profiles: ["observability"]
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./monitoring/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempodata:/var/tempo
+    # OTLP receivers on 4317 (gRPC) / 4318 (HTTP); reached over the compose network as tempo:4317.
+    restart: unless-stopped
+
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - tempo
+    restart: unless-stopped
+
 volumes:
   pgdata:
   chaindata:
+  tempodata:

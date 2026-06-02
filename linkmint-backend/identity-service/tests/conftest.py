@@ -8,12 +8,12 @@ from typing import Any
 import fakeredis.aioredis
 import pytest
 from fastapi.testclient import TestClient
+from linkmint_idempotency import IdempotencyStore
 
 from app.config import Settings
 from app.deps import get_idempotency, get_services
 from app.domain.services import ServiceDeps, Services, build_services
 from app.events.stub import NoopPublisher
-from app.idempotency import IdempotencyStore
 from app.main import create_app
 from app.security.login_attempts import FailedLoginCounter
 from tests._support import FakeRepository, make_settings, noop_commit
@@ -31,7 +31,9 @@ def fake_repo() -> FakeRepository:
 
 @pytest.fixture
 def idem_store() -> IdempotencyStore:
-    return IdempotencyStore(fakeredis.aioredis.FakeRedis(decode_responses=True), 3600)
+    return IdempotencyStore(
+        fakeredis.aioredis.FakeRedis(decode_responses=True), "identity-service", 3600
+    )
 
 
 @pytest.fixture

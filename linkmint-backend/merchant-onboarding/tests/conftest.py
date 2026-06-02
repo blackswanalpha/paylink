@@ -7,12 +7,12 @@ from collections.abc import AsyncIterator, Iterator
 import fakeredis.aioredis
 import pytest
 from fastapi.testclient import TestClient
+from linkmint_idempotency import IdempotencyStore
 
 from app.config import Settings
 from app.deps import get_idempotency, get_services
 from app.domain.services import ServiceDeps, Services, build_services
 from app.events.stub import NoopPublisher
-from app.idempotency import IdempotencyStore
 from app.main import create_app
 from tests._support import FakeObjectStore, FakeRepository, make_settings, mint_token, noop_commit
 
@@ -34,7 +34,9 @@ def object_store() -> FakeObjectStore:
 
 @pytest.fixture
 def idem_store() -> IdempotencyStore:
-    return IdempotencyStore(fakeredis.aioredis.FakeRedis(decode_responses=True), 3600)
+    return IdempotencyStore(
+        fakeredis.aioredis.FakeRedis(decode_responses=True), "merchant-onboarding", 3600
+    )
 
 
 @pytest.fixture

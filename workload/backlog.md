@@ -17,10 +17,10 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 
 | # | Work / Flow | Service (backendfeatures.md) | Stack | Depends on | Status |
 |---|-------------|------------------------------|-------|------------|--------|
-| 15 | [work15](work/work15.md) / [flow15](flow/flow15.md) | Event bus + domain event catalog | Kafka/SQS | — | todo |
-| 16 | [work16](work/work16.md) / [flow16](flow/flow16.md) | Double-entry ledger (shared `ledger` schema) | Python/Go lib | 15 | todo |
-| 17 | [work17](work/work17.md) / [flow17](flow/flow17.md) | Idempotency framework (shared) | lib + Redis | 15 | todo |
-| 18 | [work18](work/work18.md) / [flow18](flow/flow18.md) | Observability (OTel tracing + Prometheus + logs) | infra | — | todo |
+| 15 | [work15](work/work15.md) / [flow15](flow/flow15.md) | Event bus + domain event catalog | Kafka/Redpanda | — | done |
+| 16 | [work16](work/work16.md) / [flow16](flow/flow16.md) | Double-entry ledger (shared `ledger` schema) | Python/Go lib | 15 | done |
+| 17 | [work17](work/work17.md) / [flow17](flow/flow17.md) | Idempotency framework (shared) | lib + Redis | 15 | done |
+| 18 | [work18](work/work18.md) / [flow18](flow/flow18.md) | Observability (OTel tracing + Prometheus + logs) | infra | — | done |
 | 09 | [work09](work/work09.md) / [flow09](flow/flow09.md) | 2.2 Identity service | Python/FastAPI | 15,16,17 | done |
 | 01 | [work01](work/work01.md) / [flow01](flow/flow01.md) | 2.5 PayLink service | Python/FastAPI | 15,16 | done |
 | 10 | [work10](work/work10.md) / [flow10](flow/flow10.md) | 2.3 Merchant onboarding | Python/FastAPI | 09 | done |
@@ -31,7 +31,7 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 04 | [work04](work/work04.md) / [flow04](flow/flow04.md) | 2.14 MPesa adapter | Go core + Node rail | 03 | done |
 | 12 | [work12](work/work12.md) / [flow12](flow/flow12.md) | 2.15 Compliance-risk (basic KYC) | Python/FastAPI | 09 | done |
 | 13 | [work13](work/work13.md) / [flow13](flow/flow13.md) | 2.17 Audit-log service | Go/chi | 15,16 | done |
-| 14 | [work14](work/work14.md) / [flow14](flow/flow14.md) | 2.18 Notification (SMS/email) | Python/FastAPI | 15 | todo |
+| 14 | [work14](work/work14.md) / [flow14](flow/flow14.md) | 2.18 Notification (SMS/email) | Python/FastAPI | 15 | done |
 | 08 | [work08](work/work08.md) / [flow08](flow/flow08.md) | docker-compose + CI (incremental) | infra | 01–14 | done |
 | 35 | [work35](work/work35.md) / [flow35](flow/flow35.md) | fix: orchestrator rejects payable (PENDING) PayLinks | Go/chi | 01,02 | todo |
 
@@ -39,7 +39,7 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 
 | # | Work / Flow | Service (backendfeatures.md) | Stack | Depends on | Status |
 |---|-------------|------------------------------|-------|------------|--------|
-| 19 | [work19](work/work19.md) / [flow19](flow/flow19.md) | 2.6 Invoice (invoices) | Python/FastAPI | 01 | todo |
+| 19 | [work19](work/work19.md) / [flow19](flow/flow19.md) | 2.19 Invoice (invoices) | Python/FastAPI | 01 | done |
 | 20 | [work20](work/work20.md) / [flow20](flow/flow20.md) | 2.7 Escrow manager | Go/chi | 01,03 | todo |
 | 21 | [work21](work/work21.md) / [flow21](flow/flow21.md) | 2.8 Fee-pricing service | Python/FastAPI | 10 | todo |
 | 22 | [work22](work/work22.md) / [flow22](flow/flow22.md) | 2.9 Refund-dispute service | Python/FastAPI | 02,23 | todo |
@@ -62,6 +62,15 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 31 | [work31](work/work31.md) / [flow31](flow/flow31.md) | 2.6 Subscriptions (extends 19) | Python/FastAPI | 19 | todo |
 | 32 | [work32](work/work32.md) / [flow32](flow/flow32.md) | SDK suite (Python/Go/Java/Flutter) | multi | 06 | todo |
 | 33 | [work33](work/work33.md) / [flow33](flow/flow33.md) | Dashboards (merchant/admin/mobile) | TS/Flutter | 06,11 | todo |
+
+## Frontend workload (separate tree)
+
+The **premium web UI** is tracked in its own subtree, [`frontend/backlog.md`](frontend/backlog.md) —
+30 frontend `work`/`flow` pairs (design system, system UX [errors/motion/loading/notifications],
+SDK expansion, per-feature pages & modals for work01–14, and cross-cutting polish). It executes the
+`feNN` backlog in [`../frontendfeature.md`](../frontendfeature.md) and consumes the backend services
+above. Foundation items (FE work01/02/18) are `done`; the rest are `todo`/`seeded`. Run `/work <nn>`
+against that tree to build a screen.
 
 ## Coverage vs backendfeatures.md (20 services)
 
@@ -528,3 +537,80 @@ never expands the active item ([scope.md](scope.md)).
   S3 cold-archive (>90d); harden intake with real mTLS/SPIFFE + live JWKS fetch; derive the GET response
   from `canonical_bytes` (defense-in-depth so the displayed value can't diverge from the hashed record);
   deeper reader RBAC (fresh-DB staff map like work11) vs the token-role check.
+- 2026-06-01 — work14 → **done**. `linkmint-backend/notification-service` shipped (Python 3.12 / FastAPI
+  **+ Celery/Redis** — the repo's first Celery service), mirroring the work01/12 layout. Multi-channel
+  delivery (SMS + email) of domain events: `NotificationEventConsumer.handle(name, payload)` (the work15
+  bus chokepoint) → `RecipientResolver` → fan out per a `TemplateRegistry` (locale→`en` fallback) →
+  `string.Template.safe_substitute` render → persist `notify.deliveries` (QUEUED) → enqueue Celery. The
+  worker's **pure, Celery-free `DeliveryRunner`** sends via a pluggable provider (console sandbox default;
+  Africa's Talking / SendGrid config-gated http drop-ins) and on failure persists FAILED + `next_retry_at`
+  then `self.retry(countdown=…)` on the **`30s/2m/10m/1h/6h` backoff (max 5)**; exhaustion → EXHAUSTED.
+  Postgres `notify.deliveries` is the durable system-of-record (attempts increment on failure only);
+  Celery `apply_async(countdown)` drives scheduling (Redis broker on DB **/1**, idempotency cache on /0).
+  `POST /v1/notifications` is the trusted-network intake / bus stand-in (X-Internal-Token, ADR-009),
+  Idempotency-Key honored, plus a per-event dedupe (so an at-least-once bus never double-sends);
+  `GET /internal/deliveries/{id}` reads a delivery (recipient **masked**). Owns the `notify` schema
+  (webhooks **forward-schema**, deliveries + the partial retry index, templates + 4 seeded `en` templates;
+  numbered Alembic). **PII (A.1):** the contact rides only the trusted intake call (`inline` resolver) —
+  never a durable bus payload, never logged raw (`mask_recipient` on every log line + the GET); the
+  `identity` resolver is the deferred PII-free path. Non-custodial — sends messages + writes a log only.
+  Standard error envelope, structlog + trace_id, healthz/readyz (db+redis+broker)/metrics. **78 tests,
+  95.7% cov** (unit + testcontainers-eager integration), ruff/black/mypy clean. **Spec is backendfeatures.md
+  §2.7** (work14.md/flow14.md/backlog row keep the doc-scheme `§2.18` label — same drift as work12's
+  §2.15→§2.6; README cites §2.7). Built **ahead of dep work15** via the typed `handle()` seam (the established
+  01/02/09–13 convention). **Verified live** via `docker compose up -d --wait` (notification-service + a
+  Celery worker, both healthy): paylink.verified intake → 201 (sms+email ids) → worker delivered → **SENT**
+  (delivered_at set, recipient masked `+254*****78` / `j***@…`); no-token → 401 envelope; re-POST same event
+  → same ids (dedupe, 2 rows only); readyz `{db,redis,broker:ok}`; worker logs carry **no raw PII/secrets**.
+  Wired into `docker-compose.yml` (`:8095` + `notification-worker`, default profile; broker Redis /1) + CI
+  (`notification-service` job). Deferred (follow-ups, not blocking): real Kafka/SQS subscriber calling
+  `handle()` (work15); a Celery-beat sweeper for orphaned QUEUED/FAILED rows via `deliveries_retry_idx`;
+  identity-service `/internal/contacts/{id}` endpoint for the PII-free resolver; `/v1/webhooks` CRUD + HMAC
+  webhook delivery + push (FCM) + circuit-breaker + public delivery-log API (Phase 2); per-vendor provider
+  creds + send rate limits.
+- 2026-06-02 — work16 → **done**. Double-entry ledger shipped as two sibling libs:
+  `linkmint-backend/ledger-go` (`github.com/paylink/ledger-go`) and `linkmint-backend/ledger-python`
+  (`linkmint_ledger`), over a shared append-only `ledger.ledger_entries` schema (backendfeatures.md §4).
+  The posting helper writes balanced DR/CR legs in one statement (per-currency DR==CR enforced pre-write,
+  A.6); append-only is **DB-enforced** by a `BEFORE UPDATE OR DELETE` trigger (raises P0001) — corrections
+  are new reversing groups via `Reverse`/`reverse`, never edits. Helpers join the caller's transaction
+  (pgx `DBTX` / SQLAlchemy `AsyncConnection`|`AsyncSession`, never self-commit) so a business write and its
+  ledger legs commit atomically. Exact integers end-to-end (`*big.Int` / Python `int`, NUMERIC(38,0),
+  `::text` round-trip — no float). Reads: `Balance` (ΣCR−ΣDR), `IsBalanced`, `EntriesBy{Group,Account,PLID}`
+  for reconciliation/reporting (work26/27). Schema applied by a one-shot `ledger-migrate` compose service
+  (no service owns `ledger`); the Python lib ships a **byte-identical** migration (CI diff-guarded). ledger-go
+  84.9% cov (testcontainers postgres:16); ledger-python 26 tests / 100% cov; gofmt/go vet + ruff/black/mypy
+  clean; two CI jobs added. Verified live (`docker compose run ledger-migrate` creates schema+trigger; raw
+  UPDATE/DELETE rejected). Non-custodial (A.1): records flows between opaque account labels, never holds
+  funds. The 0.5%/70/20/10 fee split appears only as a representative test posting — not reimplemented (A.5).
+  Out of scope (per work16): per-service posting wiring (each service calls the helper; work23/26/27 consume).
+- 2026-06-02 — work17 → **done**. Idempotency framework shipped as two byte-identical sibling libs:
+  `linkmint-backend/idempotency-go` (`github.com/paylink/idempotency-go`) and `idempotency-python`
+  (`linkmint_idempotency`), mirroring the work15/16 sibling-lib pattern. Each ships (a) the
+  **Idempotency-Key HTTP store** — Redis `idem:<service>:<route>:<key>`, 24h TTL, replay-cached response,
+  `409 IDEMPOTENT_CONFLICT` on body-mismatch / in-flight (the verbatim SETNX-then-GET race loop preserved);
+  and (b) **consumer-side dedupe helpers** (both first-class): `RedisDedupe` (best-effort SETNX
+  short-circuit, `idemc:<service>:<scope>:<key>`, rolls back the marker on handler error) and `DbDedupe`
+  (durable exactly-once *effect* — a `processed_events(scope,dedupe_key)` row inserted on the caller's own
+  transaction; ships a **byte-identical** `processed_events.sql`, CI diff-guarded). The libs are
+  transport-free (no httpx/chi/config/fastapi import): the HTTP-status mapping lives at each service
+  boundary (Go `errors.Is(err, idempotency.ErrConflict)` → `httpx`; Python `@app.exception_handler(IdempotencyConflict)`).
+  **Adopted by all 9 services** that had a copied store — Go: payment-orchestrator, proof-validator,
+  audit-log-service, adapters/mpesa (each `internal/idempotency/` deleted, `require`+`replace ../idempotency-go`);
+  Python: paylink-service, identity-service, notification-service, merchant-onboarding, compliance-risk
+  (each `app/idempotency.py` deleted, Dockerfile `COPY+pip install`, CI install step since it is eagerly
+  imported). **notification-service additionally adopts `RedisDedupe`** in its bus consumer (cheap
+  short-circuit in front of the durable `deliveries_dedupe_uidx`), with a redelivery→single-process test.
+  App-layer complement to **A.7**: never gates settlement on its Redis/DB marker — the on-chain `proof_hash`
+  check (and the payment/proof `proof_hash UNIQUE`) stays the source of truth, so it fails safe toward
+  on-chain truth; touches neither A.1 (non-custodial) nor A.6 (ledger). idempotency-go 88.6% cov
+  (testcontainers redis:7 + postgres:16); idempotency-python 97.6% / 16 tests; all 9 services re-verified
+  green (gofmt/vet + ruff/black/mypy clean, ≥80%); two CI jobs added; all touched service images build.
+  Fixed a latent Docker gap en route: payment-orchestrator/identity/merchant/compliance Dockerfiles were
+  service-dir context (some missing eventbus-python for their consumers) — converted to the repo-root
+  pattern (compose `context: .` + `dockerfile:`). Guidance doc = the two lib READMEs (four-layer table +
+  per-flow uniqueness) + a `backendfeatures.md` cross-ref. Deferred (follow-up, not blocking): adopt the
+  generic `DbDedupe` + `processed_events` in a consumer designed to let the helper own the transaction —
+  current bus consumers self-commit and already carry domain-keyed idempotency (notification
+  `deliveries_dedupe_uidx`; compliance activity-ledger), so a forced wrap would break atomicity; same row
+  covers the first prod Go bus-consumer adopter (none exists yet — only a chain-event-mirror test consumer).

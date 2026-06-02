@@ -7,6 +7,7 @@ from typing import Any
 import fakeredis.aioredis
 import pytest
 from fastapi.testclient import TestClient
+from linkmint_idempotency import IdempotencyStore
 
 from app.chain.nonce import NonceManager
 from app.chain.signer import ServiceKeySigner
@@ -14,7 +15,6 @@ from app.config import Settings
 from app.deps import caller_address, get_idempotency, get_service
 from app.domain.service import PayLinkService
 from app.events.stub import NoopPublisher
-from app.idempotency import IdempotencyStore
 from app.main import create_app
 from tests._support import (
     GOLDEN_KEY,
@@ -37,7 +37,9 @@ def fake_repo() -> FakeRepository:
 
 @pytest.fixture
 def idem_store() -> IdempotencyStore:
-    return IdempotencyStore(fakeredis.aioredis.FakeRedis(decode_responses=True), 3600)
+    return IdempotencyStore(
+        fakeredis.aioredis.FakeRedis(decode_responses=True), "paylink-service", 3600
+    )
 
 
 @pytest.fixture

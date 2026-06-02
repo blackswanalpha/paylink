@@ -6,4 +6,33 @@ html,
 body {
   padding: 0;
   margin: 0;
+  /* Ivory canvas as a pre-hydration fallback (the Chakra theme sets this too). */
+  background: #faf7f0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Skeleton shimmer — gated on reduced-motion (F.6). */
+@keyframes lm-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Reduced-motion backstop for CSS-driven motion (skeleton shimmer, hover lift, button press).
+   framer-motion's JS animations are gated separately via MotionConfig + useReducedMotion (ADR-012). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

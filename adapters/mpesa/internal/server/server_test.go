@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
+	idempotency "github.com/paylink/idempotency-go"
 	"github.com/paylink/mpesa-adapter/internal/broadcast"
 	"github.com/paylink/mpesa-adapter/internal/correlation"
 	"github.com/paylink/mpesa-adapter/internal/daraja"
 	"github.com/paylink/mpesa-adapter/internal/domain"
-	"github.com/paylink/mpesa-adapter/internal/idempotency"
 	"github.com/paylink/mpesa-adapter/internal/metrics"
 	"github.com/paylink/mpesa-adapter/internal/proof"
 	"github.com/paylink/mpesa-adapter/internal/server"
@@ -115,7 +115,7 @@ func newServer(t *testing.T, validatorURL string, rail domain.RailClient, corr c
 	}
 	bcast := broadcast.NewClient(validatorURL, &http.Client{Timeout: 2 * time.Second})
 	svc := domain.NewService(rail, corr, sg, bcast, "174379", nil)
-	idem := idempotency.New(newFakeRedis(), time.Hour)
+	idem := idempotency.New(newFakeRedis(), "mpesa-adapter", time.Hour)
 	return server.New(svc, idem, metrics.New(), nil, internalToken, nil)
 }
 

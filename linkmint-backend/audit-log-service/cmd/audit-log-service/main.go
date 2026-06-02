@@ -20,12 +20,13 @@ import (
 	"github.com/paylink/audit-log-service/internal/config"
 	"github.com/paylink/audit-log-service/internal/domain"
 	"github.com/paylink/audit-log-service/internal/events"
-	"github.com/paylink/audit-log-service/internal/idempotency"
 	"github.com/paylink/audit-log-service/internal/intake"
 	"github.com/paylink/audit-log-service/internal/logging"
 	"github.com/paylink/audit-log-service/internal/metrics"
 	"github.com/paylink/audit-log-service/internal/server"
 	pgstore "github.com/paylink/audit-log-service/internal/store/postgres"
+	idempotency "github.com/paylink/idempotency-go"
+	telemetry "github.com/paylink/telemetry-go"
 )
 
 func main() {
@@ -40,6 +41,13 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// work18 — OpenTelemetry tracing. A no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set; never fatal.
+	otelShutdown, err := telemetry.Init(ctx, config.ServiceName, "0.1.0")
+	if err != nil {
+		log.Warn("telemetry init failed; tracing disabled", "err", err.Error())
+	}
+	defer func() { _ = otelShutdown(context.Background()) }()
 
 	// PostgreSQL store + migrations.
 	pg, err := pgstore.New(ctx, cfg.DatabaseURL)
@@ -63,7 +71,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer rc.Close()
-	idem := idempotency.New(rc, cfg.IdempotencyTTL)
+	idem := idempotency.New(rc, config.ServiceName, cfg.IdempotencyTTL)
 
 	// RS256 reader verification (config-gated — disabled => gateway-trust).
 	verifier, err := auth.New(cfg.JWTPublicKeyPEM, cfg.JWTIssuer, cfg.JWTAudience, cfg.ReaderRoles)

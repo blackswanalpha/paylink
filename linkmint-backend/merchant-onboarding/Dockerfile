@@ -1,18 +1,35 @@
 # merchant-onboarding image. Runs migrations on start, then serves.
+#
+# Build context = repo ROOT (work15/work17: installs the shared eventbus-python lib so the bus
+# consumer / outbox relay work, plus the idempotency-python lib for the Idempotency-Key store).
+# docker-compose must set `build.context: .` with this dockerfile path.
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
+RUN pip install --upgrade pip
 
-# Source first (the package build reads pyproject + app/), then install.
-COPY pyproject.toml alembic.ini entrypoint.sh ./
-COPY app ./app
-COPY alembic ./alembic
-RUN pip install --upgrade pip \
-    && pip install . \
-    && chmod +x entrypoint.sh
+# work15 — the shared Kafka client lib (used only when the bus consumer / outbox relay are enabled
+# via EVENT_PUBLISHER_MODE=kafka or MERCHANT_EVENT_CONSUMER_ENABLED=true; lazily imported).
+COPY linkmint-backend/eventbus-python /eventbus-python
+RUN pip install /eventbus-python
+
+# work17 — the shared idempotency lib (Idempotency-Key store). Eagerly imported by the app (error
+# handler + endpoints), so it is always installed (not optional like the bus client).
+COPY linkmint-backend/idempotency-python /idempotency-python
+RUN pip install /idempotency-python
+
+# work18 — the shared telemetry lib (OTel init + ASGI middleware). Eagerly imported by app.main.
+COPY linkmint-backend/telemetry-python /telemetry-python
+RUN pip install /telemetry-python
+
+# Service source (the package build reads pyproject + app/), then install.
+COPY linkmint-backend/merchant-onboarding/pyproject.toml linkmint-backend/merchant-onboarding/alembic.ini linkmint-backend/merchant-onboarding/entrypoint.sh ./
+COPY linkmint-backend/merchant-onboarding/app ./app
+COPY linkmint-backend/merchant-onboarding/alembic ./alembic
+RUN pip install . && chmod +x entrypoint.sh
 
 # Run as non-root.
 RUN useradd --create-home --uid 10001 appuser

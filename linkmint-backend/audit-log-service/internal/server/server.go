@@ -11,10 +11,12 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/paylink/audit-log-service/internal/auth"
+	"github.com/paylink/audit-log-service/internal/config"
 	"github.com/paylink/audit-log-service/internal/domain"
 	"github.com/paylink/audit-log-service/internal/httpx"
-	"github.com/paylink/audit-log-service/internal/idempotency"
 	"github.com/paylink/audit-log-service/internal/metrics"
+	idempotency "github.com/paylink/idempotency-go"
+	telemetry "github.com/paylink/telemetry-go"
 )
 
 // ReadyCheck is a named readiness dependency probe.
@@ -59,6 +61,9 @@ func (s *Server) Handler() http.Handler { return s.router }
 func (s *Server) routes() http.Handler {
 	r := chi.NewRouter()
 
+	// work18 — telemetry first: extract inbound trace context, start the server span, and seed
+	// X-Request-Id with the trace id so the RequestID middleware below adopts it.
+	r.Use(telemetry.Middleware(config.ServiceName, routeLabel))
 	r.Use(httpx.RequestID(s.log))
 	r.Use(httpx.RequestLogger)
 	r.Use(httpx.Recoverer)

@@ -5,9 +5,10 @@
 # /kong/kong.yml is NOT committed (git-ignored) and is the only place a secret materializes.
 #
 # Single authenticated ingress:
-#   /v1/paylinks*  -> paylink-service        (auth required)
-#   /v1/payments*  -> payment-orchestrator   (auth required)
-#   anything else  -> 404 (LinkMint envelope)
+#   /v1/paylinks*       -> paylink-service        (auth required)
+#   /v1/payments*       -> payment-orchestrator   (auth required)
+#   /v1/notifications*  -> notification-service   (auth required; FE work07 inbox)
+#   anything else       -> 404 (LinkMint envelope)
 #
 # Auth: a request passes if it carries EITHER a valid JWT (Authorization: Bearer ...) OR a valid
 # partner API key (X-API-Key). Both auth plugins fall back to the shared `anonymous` consumer on
@@ -101,6 +102,37 @@ services:
               hide_credentials: true
               run_on_preflight: true
 
+  # ── notification-service (work14 inbox / FE work07) ──────────────────────────────────────────
+  - name: notification-service
+    url: ${GATEWAY_NOTIFICATION_SERVICE_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: notifications
+        paths: ["/v1/notifications"]
+        strip_path: false
+        preserve_host: false
+        plugins:
+          - name: jwt
+            config:
+              anonymous: 11111111-1111-1111-1111-111111111111
+              key_claim_name: iss
+              claims_to_verify: ["exp"]
+              uri_param_names: []
+              cookie_names: []
+              run_on_preflight: true
+          - name: key-auth
+            config:
+              anonymous: 11111111-1111-1111-1111-111111111111
+              key_names: ["X-API-Key"]
+              key_in_header: true
+              key_in_query: false
+              key_in_body: false
+              hide_credentials: true
+              run_on_preflight: true
+
 consumers:
   # Shared anonymous fallback — selected by the auth plugins when no valid credential is presented.
   - id: 11111111-1111-1111-1111-111111111111
@@ -173,7 +205,7 @@ plugins:
           local route = kong.router.get_route()
           local rn = route and route.name or ""
           -- Only the authenticated /v1 routes carry identity; skip the catch-all (404) route.
-          if rn ~= "paylinks" and rn ~= "payments" then
+          if rn ~= "paylinks" and rn ~= "payments" and rn ~= "notifications" then
             return
           end
 

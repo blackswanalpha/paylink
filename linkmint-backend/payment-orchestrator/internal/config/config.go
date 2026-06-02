@@ -26,6 +26,8 @@ type Config struct {
 	IdempotencyTTL     time.Duration // PAYMENT_IDEMPOTENCY_TTL_SECONDS
 	ChainEventsEnabled bool          // PAYMENT_CHAIN_EVENTS_ENABLED — toggle the WS subscriber
 	HTTPTimeout        time.Duration // PAYMENT_HTTP_TIMEOUT_SECONDS — outbound HTTP timeout
+	EventPublisherMode string        // PAYMENT_EVENT_PUBLISHER_MODE — "log" (default) | "kafka" (work15)
+	KafkaBrokers       string        // KAFKA_BROKERS — shared bus brokers (comma-separated); kafka mode
 }
 
 // Load reads configuration from the environment, applying defaults that make a local
@@ -57,6 +59,8 @@ func Load() (Config, error) {
 		IdempotencyTTL:     ttl,
 		ChainEventsEnabled: eventsEnabled,
 		HTTPTimeout:        httpTimeout,
+		EventPublisherMode: env("PAYMENT_EVENT_PUBLISHER_MODE", "log"),
+		KafkaBrokers:       os.Getenv("KAFKA_BROKERS"),
 	}, nil
 }
 

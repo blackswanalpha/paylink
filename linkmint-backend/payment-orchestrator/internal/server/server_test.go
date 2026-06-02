@@ -11,9 +11,11 @@ import (
 	"testing"
 	"time"
 
+	idempotency "github.com/paylink/idempotency-go"
+
+	"github.com/paylink/payment-orchestrator/internal/config"
 	"github.com/paylink/payment-orchestrator/internal/domain"
 	"github.com/paylink/payment-orchestrator/internal/events"
-	"github.com/paylink/payment-orchestrator/internal/idempotency"
 	"github.com/paylink/payment-orchestrator/internal/lifecycle"
 	"github.com/paylink/payment-orchestrator/internal/metrics"
 	"github.com/paylink/payment-orchestrator/internal/server"
@@ -85,7 +87,7 @@ func build(t *testing.T, pl domain.PayLinkLookup, ch domain.ChainReader, ready .
 	t.Helper()
 	store := memory.New()
 	svc := domain.NewService(store, pl, ch, events.NewLogPublisher(nil), nil)
-	idem := idempotency.New(newMemRedis(), time.Hour)
+	idem := idempotency.New(newMemRedis(), config.ServiceName, time.Hour)
 	if ready == nil {
 		ready = []server.ReadyCheck{{Name: "store", Check: store.Ping}}
 	}

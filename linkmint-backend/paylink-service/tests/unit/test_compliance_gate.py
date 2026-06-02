@@ -8,6 +8,7 @@ from typing import Any
 import fakeredis.aioredis
 import pytest
 from fastapi.testclient import TestClient
+from linkmint_idempotency import IdempotencyStore
 
 from app.chain.nonce import NonceManager
 from app.deps import caller_address, caller_user_id, get_idempotency, get_service
@@ -15,7 +16,6 @@ from app.domain.models import OffChainStatus
 from app.domain.service import CreateCommand, PayLinkService
 from app.errors import AppError, ErrorCode
 from app.events.stub import NoopPublisher
-from app.idempotency import IdempotencyStore
 from app.main import create_app
 from tests._support import (
     FakeChainClient,
@@ -159,7 +159,9 @@ def test_create_api_returns_402_envelope_on_block(
         decision="block", reasons=[{"code": "AML_THRESHOLD", "detail": "x"}]
     )
     nonces = NonceManager(fake_chain)
-    idem = IdempotencyStore(fakeredis.aioredis.FakeRedis(decode_responses=True), 3600)
+    idem = IdempotencyStore(
+        fakeredis.aioredis.FakeRedis(decode_responses=True), "paylink-service", 3600
+    )
 
     async def _service_override() -> Any:
         yield PayLinkService(

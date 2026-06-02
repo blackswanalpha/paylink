@@ -1,18 +1,36 @@
-# paylink-service image. Runs migrations on start, then serves.
+# paylink-service image.
+#
+# Build context = repo ROOT (work15: installs the shared eventbus-python lib so the kafka
+# outbox-drain relay works; the lib is lazily imported, only when PAYLINK_EVENT_PUBLISHER_MODE=kafka).
+# docker-compose sets `build.context: .` with this dockerfile path; by hand:
+# `docker build -f linkmint-backend/paylink-service/Dockerfile .` from the repo root.
+# Runs migrations on start, then serves.
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
+RUN pip install --upgrade pip
 
-# Source first (the package build reads pyproject + app/), then install.
-COPY pyproject.toml alembic.ini entrypoint.sh ./
-COPY app ./app
-COPY alembic ./alembic
-RUN pip install --upgrade pip \
-    && pip install . \
-    && chmod +x entrypoint.sh
+# work15 — the shared Kafka client lib (used only in kafka mode; lazily imported).
+COPY linkmint-backend/eventbus-python /eventbus-python
+RUN pip install /eventbus-python
+
+# work17 — the shared idempotency lib (Idempotency-Key store + consumer dedupe). Eagerly imported by
+# the app (error handler + endpoints), so it is always installed (not optional like the bus client).
+COPY linkmint-backend/idempotency-python /idempotency-python
+RUN pip install /idempotency-python
+
+# work18 — the shared telemetry lib (OTel init + ASGI middleware). Eagerly imported by app.main.
+COPY linkmint-backend/telemetry-python /telemetry-python
+RUN pip install /telemetry-python
+
+# Service source (the package build reads pyproject + app/), then install.
+COPY linkmint-backend/paylink-service/pyproject.toml linkmint-backend/paylink-service/alembic.ini linkmint-backend/paylink-service/entrypoint.sh ./
+COPY linkmint-backend/paylink-service/app ./app
+COPY linkmint-backend/paylink-service/alembic ./alembic
+RUN pip install . && chmod +x entrypoint.sh
 
 # Run as non-root.
 RUN useradd --create-home --uid 10001 appuser

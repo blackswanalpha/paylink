@@ -42,6 +42,7 @@ the flow is the recipe.
 | [`templates/`](templates/) | Templates for new work items, flows, and prompts. |
 | [`work/`](work/) | Backlog items `work01.md` … `work34.md` (full `backendfeatures.md` coverage, phase-tagged). |
 | [`flow/`](flow/) | Paired execution flows `flow01.md` … `flow34.md`. |
+| [`frontend/`](frontend/) | The **frontend** workload subtree — work/flow pairs for the premium web UI (executes `../frontendfeature.md`). Start at [`frontend/backlog.md`](frontend/backlog.md). |
 
 ## How to drive it with Claude
 

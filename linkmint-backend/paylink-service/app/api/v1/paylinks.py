@@ -6,12 +6,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse
+from linkmint_idempotency import IdempotencyStore, fingerprint
 
 from app.api.v1 import schemas
 from app.config import Settings
 from app.deps import caller_address, caller_user_id, get_idempotency, get_service, get_settings
 from app.domain.service import CreateCommand, PayLinkService
-from app.idempotency import IdempotencyStore, fingerprint
 
 router = APIRouter(prefix="/v1/paylinks", tags=["paylinks"])
 

@@ -19,12 +19,12 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import Depends, Header, Request
+from linkmint_idempotency import IdempotencyStore
 
 from app.config import Settings
 from app.db.repositories import ComplianceRepository
 from app.domain.services import ServiceDeps, Services, build_services
 from app.errors import AppError, ErrorCode
-from app.idempotency import IdempotencyStore
 from app.providers.registry import KycProviderRegistry
 from app.security.jwt import AccessClaims, JwtVerifier
 

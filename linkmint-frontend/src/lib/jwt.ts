@@ -42,6 +42,14 @@ function loadConfig(): DevJwtConfig {
 }
 
 /**
+ * The dev `creator_addr` the gateway injects as `X-Creator-Addr` — i.e. the address that owns the
+ * PayLinks created through this app. Used server-side to scope the dashboard to "your" PayLinks.
+ */
+export function devCreatorAddr(): string {
+  return loadConfig().creatorAddr;
+}
+
+/**
  * Mint a dev HS256 JWT. `now` (unix seconds) is injectable for tests; defaults to the wall clock.
  */
 export function mintDevJwt(now: number = Math.floor(Date.now() / 1000)): string {

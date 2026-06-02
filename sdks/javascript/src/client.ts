@@ -3,6 +3,7 @@
 import { LinkMintError } from './errors';
 import { HttpClient, type AuthConfig, type FetchLike, type ResolvedConfig } from './http';
 import { defaultIdempotencyKey } from './idempotency';
+import { NotificationsResource } from './resources/notifications';
 import { PayLinksResource } from './resources/paylinks';
 import { PaymentsResource } from './resources/payments';
 
@@ -75,11 +76,13 @@ function resolveConfig(options: LinkMintClientOptions): ResolvedConfig {
 export class LinkMintClient {
   readonly paylinks: PayLinksResource;
   readonly payments: PaymentsResource;
+  readonly notifications: NotificationsResource;
 
   constructor(options: LinkMintClientOptions) {
     const http = new HttpClient(resolveConfig(options));
     this.paylinks = new PayLinksResource(http);
     this.payments = new PaymentsResource(http);
+    this.notifications = new NotificationsResource(http);
   }
 }
 

@@ -6,13 +6,29 @@
  */
 
 import { useEffect } from 'react';
-import { Box, Center, Container, Heading, HStack, Spinner, Stack, Text } from '@chakra-ui/react';
-import { Zap } from 'react-feather';
+import NextLink from 'next/link';
+import {
+  Box,
+  Center,
+  Container,
+  Heading,
+  HStack,
+  Link,
+  Spinner,
+  Stack,
+  Text,
+} from '@chakra-ui/react';
+import { ArrowRight, Zap } from 'react-feather';
 import { useAppStore } from '@/store/app';
 import { createLinkMintClient } from '@/lib/linkmint';
+import { Stepper } from '@/components/ui';
+import type { Step } from '@/types/wizard';
 import { CreatePayLinkForm } from './CreatePayLinkForm';
 import { PayInstructions } from './PayInstructions';
 import { SettlementStatus } from './SettlementStatus';
+
+const WIZARD_STEPS = [{ title: 'Create' }, { title: 'Pay' }, { title: 'Settlement' }];
+const STEP_INDEX: Record<Step, number> = { create: 0, instructions: 1, status: 2 };
 
 export function PayLinkDemo({ initialToken }: { initialToken: string }) {
   const client = useAppStore((s) => s.client);
@@ -34,7 +50,23 @@ export function PayLinkDemo({ initialToken }: { initialToken: string }) {
           <Text color="fg.muted" mt={1}>
             Create a PayLink → pay via M-PESA → watch it settle on-chain.
           </Text>
+          <Link
+            asChild
+            mt={2}
+            fontSize="sm"
+            fontWeight="500"
+            color="accent.fg"
+            display="inline-flex"
+            alignItems="center"
+            gap={1}
+          >
+            <NextLink href="/dashboard">
+              Go to merchant dashboard <ArrowRight size={14} />
+            </NextLink>
+          </Link>
         </Box>
+
+        <Stepper steps={WIZARD_STEPS} current={STEP_INDEX[step]} />
 
         {!client ? (
           <Center py={16}>

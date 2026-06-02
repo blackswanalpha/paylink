@@ -10,12 +10,13 @@
  */
 
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
 import { NotFoundError } from '@linkmint/sdk';
 import type { PayLink, PayLinkStatus } from '@linkmint/sdk';
 import { useAppStore } from '@/store/app';
 import { clientConfig } from '@/lib/env';
-import { isAbortError, toDisplayError, type DisplayError } from '@/lib/errors';
+import { isAbortError, type DisplayError } from '@/lib/errors';
+import { notify } from '@/lib/notify';
+import { reportError } from '@/lib/reportError';
 
 const TERMINAL: ReadonlySet<PayLinkStatus> = new Set([
   'VERIFIED',
@@ -52,9 +53,9 @@ export function useSettlementStatus(plId: string): SettlementState {
 
     const finishToast = (status: PayLinkStatus): void => {
       if (status === 'VERIFIED') {
-        toast.success('Settled on-chain', { description: 'The PayLink is VERIFIED.' });
+        notify.success('Settled on-chain', { description: 'The PayLink is VERIFIED.' });
       } else {
-        toast.error(`PayLink ${status.toLowerCase()}`, {
+        notify.error(`PayLink ${status.toLowerCase()}`, {
           description: 'Settlement did not complete.',
         });
       }
@@ -79,11 +80,16 @@ export function useSettlementStatus(plId: string): SettlementState {
         }
       } catch (err) {
         if (cancelled || isAbortError(err)) return;
+        // Route through the system, inline (the status card renders it). A 401 escalates to the
+        // global re-auth modal (and won't set an inline error); a 404 (wrong id) stops the poll.
+        const { error, surface } = reportError(err, { surface: 'inline' });
         if (err instanceof NotFoundError) {
-          setState((prev) => ({ ...prev, isPolling: false, error: toDisplayError(err) }));
+          setState((prev) => ({ ...prev, isPolling: false, error }));
           return;
         }
-        setState((prev) => ({ ...prev, error: toDisplayError(err) }));
+        if (surface === 'inline') {
+          setState((prev) => ({ ...prev, error }));
+        }
       }
       if (!cancelled) {
         timer = setTimeout(() => void tick(), pollMs);

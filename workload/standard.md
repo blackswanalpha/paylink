@@ -55,6 +55,12 @@ Each work item states its stack. When unsure, match the table.
 - Structured JSON logs with a correlation ID (`X-Request-Id` / `trace_id`) per request.
 - Health (`/internal/healthz`) and readiness (`/internal/readyz`) endpoints; graceful shutdown.
 - `/metrics` (Prometheus) endpoint.
+- **Observability:** call `telemetry.Init` (Go) / `init_telemetry` (Python) at startup and add the
+  shared telemetry middleware first — the libs `telemetry-go` / `telemetry-python` give OpenTelemetry
+  tracing (OTLP→Tempo), W3C `traceparent` propagation across HTTP + the Kafka bus, and the standard
+  `http_requests_total` / `bus_messages_consumed_total` / `chain_txs_submitted_total` counters
+  (**ADR-013**). Tracing is a no-op until `OTEL_EXPORTER_OTLP_ENDPOINT` is set. NO secrets/PII in logs,
+  spans, or metric labels (route templates only, never raw paths).
 - **API:** RESTful, versioned `/v1/...`. Standard error envelope on every error:
   ```json
   { "error": { "code": "PAYLINK_EXPIRED", "message": "human readable", "details": {}, "trace_id": "..." } }
@@ -62,8 +68,11 @@ Each work item states its stack. When unsure, match the table.
   Document endpoints in `docs/api/` (OpenAPI); update SDK clients in the same change.
 - **Idempotency:** state-mutating endpoints accept an `Idempotency-Key` header (Redis-backed,
   24h TTL); see the idempotency framework work item.
-- **Events:** publish/consume domain events by their logical name (the `backendfeatures.md`
-  taxonomy) over the Kafka/SQS transport (ADR-004).
+- **Events:** publish/consume domain events by their logical name over the Kafka transport
+  (Redpanda; **ADR-011**, refining ADR-004). The logical name → topic model and producer/consumer
+  map is [catalog.md](catalog.md); use the shared client libs `eventbus-go` / `eventbus-python`
+  (byte-identical envelope). Producers with a durable outbox drain it via a relay; consumers are
+  idempotent (at-least-once).
 - **Persistence:** PostgreSQL primary (one schema per service), Redis cache, Kafka/SQS async.
   **All schema changes via numbered migrations** — never edit an applied migration; add a new
   one. Never modify production data directly. No cross-schema foreign keys (opaque id refs).

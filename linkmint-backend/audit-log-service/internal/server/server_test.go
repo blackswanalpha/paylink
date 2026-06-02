@@ -17,9 +17,9 @@ import (
 	"github.com/paylink/audit-log-service/internal/auth"
 	"github.com/paylink/audit-log-service/internal/domain"
 	"github.com/paylink/audit-log-service/internal/events"
-	"github.com/paylink/audit-log-service/internal/idempotency"
 	"github.com/paylink/audit-log-service/internal/metrics"
 	"github.com/paylink/audit-log-service/internal/store/memory"
+	idempotency "github.com/paylink/idempotency-go"
 )
 
 func TestMain(m *testing.M) {
@@ -67,7 +67,7 @@ func newTestServer(t *testing.T, secret string) *Server {
 	t.Helper()
 	store := memory.New()
 	svc := domain.NewService(store, events.NewLogPublisher(nil), nil)
-	idem := idempotency.New(newFakeRedis(), time.Hour)
+	idem := idempotency.New(newFakeRedis(), "audit-log-service", time.Hour)
 	verifier, _ := auth.New("", "", "", nil) // disabled => gateway-trust
 	return New(svc, idem, metrics.New(), verifier, secret, nil, []ReadyCheck{{Name: "store", Check: store.Ping}})
 }

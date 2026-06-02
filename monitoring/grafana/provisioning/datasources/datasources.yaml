@@ -1,0 +1,23 @@
+# work18 — Grafana datasources: Prometheus (metrics) + Tempo (traces), unified in one UI. Provisioned
+# automatically on Grafana start (mounted at /etc/grafana/provisioning/datasources).
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      # Jump from a span to the service's metrics (work18 standard counters share the service label).
+      tracesToMetrics:
+        datasourceUid: prometheus
+      serviceMap:
+        datasourceUid: prometheus
