@@ -702,6 +702,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # work16 — the settlement hub is the natural ledger writer, so gate it on the one-shot ledger
+      # schema migration. This also gives ledger-migrate a `service_completed_successfully` dependent
+      # so `docker compose up --wait` treats its exit 0 as an expected completion (without a dependent,
+      # --wait reports `container ledger-migrate exited (0)` and the e2e boot step fails).
+      ledger-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - "CMD-SHELL"
