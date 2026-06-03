@@ -67,3 +67,7 @@ Thumbs.db
 /blockchainfeature.md
 /backendfeatures.md
 /frontendfeature.md
+
+# Claude Code runtime lock/state
+.claude/scheduled_tasks.lock
+.claude/*.lock
