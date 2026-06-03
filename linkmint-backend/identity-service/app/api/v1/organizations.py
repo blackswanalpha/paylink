@@ -46,9 +46,7 @@ async def create_org(
 
 
 @router.get("", response_model=schemas.OrgListResponse)
-async def list_orgs(
-    services: ServicesDep, principal: PrincipalDep
-) -> schemas.OrgListResponse:
+async def list_orgs(services: ServicesDep, principal: PrincipalDep) -> schemas.OrgListResponse:
     orgs = await services.orgs.list_for_user(uuid.UUID(principal.user_id))
     return schemas.OrgListResponse(
         items=[

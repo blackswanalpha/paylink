@@ -55,10 +55,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_password_reset_user_id", table_name="password_reset_tokens", schema=SCHEMA
-    )
-    op.drop_index(
-        "uq_password_reset_token_hash", table_name="password_reset_tokens", schema=SCHEMA
-    )
+    op.drop_index("ix_password_reset_user_id", table_name="password_reset_tokens", schema=SCHEMA)
+    op.drop_index("uq_password_reset_token_hash", table_name="password_reset_tokens", schema=SCHEMA)
     op.drop_table("password_reset_tokens", schema=SCHEMA)

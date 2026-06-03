@@ -155,9 +155,7 @@ class FakeRepository:
     async def list_memberships_for_user(self, user_id: uuid.UUID) -> list[MembershipRow]:
         return [m for (_, uid), m in self.memberships.items() if uid == user_id]
 
-    async def list_orgs_for_user(
-        self, user_id: uuid.UUID
-    ) -> list[tuple[OrganizationRow, str]]:
+    async def list_orgs_for_user(self, user_id: uuid.UUID) -> list[tuple[OrganizationRow, str]]:
         pairs = [
             (self.orgs[oid], m.role)
             for (oid, uid), m in self.memberships.items()

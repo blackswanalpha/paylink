@@ -141,9 +141,7 @@ def test_enabled_event_still_delivered(client: TestClient) -> None:
     assert items[0]["title"] == "PayLink settled"
 
 
-def test_disabled_email_channel_suppresses_only_email(
-    client: TestClient, enqueue_spy: Any
-) -> None:
+def test_disabled_email_channel_suppresses_only_email(client: TestClient, enqueue_spy: Any) -> None:
     client.put("/v1/notifications/preferences", headers=_hdr(), json={"channels": {"email": False}})
     # paylink.verified carries BOTH the inbox (recipient_addr) and SMS/email (user_id+contact).
     resp = client.post(

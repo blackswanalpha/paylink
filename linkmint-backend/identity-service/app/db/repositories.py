@@ -127,9 +127,7 @@ class IdentityRepository:
         stmt = select(MembershipRow).where(MembershipRow.user_id == user_id)
         return list((await self._session.execute(stmt)).scalars().all())
 
-    async def list_orgs_for_user(
-        self, user_id: uuid.UUID
-    ) -> list[tuple[OrganizationRow, str]]:
+    async def list_orgs_for_user(self, user_id: uuid.UUID) -> list[tuple[OrganizationRow, str]]:
         """The user's organizations (joined for name/type) + their role in each, newest first."""
         stmt = (
             select(OrganizationRow, MembershipRow.role)
