@@ -136,6 +136,14 @@ class SessionsService:
             session.revoked_at = datetime.now(UTC)
             await self._commit()
 
+    async def revoke_all(self, user_id: uuid.UUID) -> None:
+        """Revoke every active session for a user (password reset / forced logout).
+
+        Caller is responsible for committing (mirrors ``_revoke_family``, which runs inside the
+        reuse-detection path's own commit).
+        """
+        await self._revoke_family(user_id)
+
     async def _revoke_family(self, user_id: uuid.UUID) -> None:
         now = datetime.now(UTC)
         for s in await self._repo.list_active_sessions_for_user(user_id):

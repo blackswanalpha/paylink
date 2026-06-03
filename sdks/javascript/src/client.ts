@@ -3,9 +3,17 @@
 import { LinkMintError } from './errors';
 import { HttpClient, type AuthConfig, type FetchLike, type ResolvedConfig } from './http';
 import { defaultIdempotencyKey } from './idempotency';
+import { AdminResource } from './resources/admin';
+import { AuditLogResource } from './resources/auditLog';
+import { AuthResource } from './resources/auth';
+import { ComplianceResource } from './resources/compliance';
+import { MerchantsResource } from './resources/merchants';
 import { NotificationsResource } from './resources/notifications';
+import { OrganizationsResource } from './resources/organizations';
 import { PayLinksResource } from './resources/paylinks';
 import { PaymentsResource } from './resources/payments';
+import { SessionsResource } from './resources/sessions';
+import { UsersResource } from './resources/users';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -77,12 +85,30 @@ export class LinkMintClient {
   readonly paylinks: PayLinksResource;
   readonly payments: PaymentsResource;
   readonly notifications: NotificationsResource;
+  // work08 — identity/merchant/compliance/admin/audit surface (unblocks the auth/account/onboarding/
+  // KYC/admin/developer screens). These authenticate via the forwarded bearer token, not X-Creator-Addr.
+  readonly auth: AuthResource;
+  readonly users: UsersResource;
+  readonly organizations: OrganizationsResource;
+  readonly sessions: SessionsResource;
+  readonly merchants: MerchantsResource;
+  readonly compliance: ComplianceResource;
+  readonly admin: AdminResource;
+  readonly auditLog: AuditLogResource;
 
   constructor(options: LinkMintClientOptions) {
     const http = new HttpClient(resolveConfig(options));
     this.paylinks = new PayLinksResource(http);
     this.payments = new PaymentsResource(http);
     this.notifications = new NotificationsResource(http);
+    this.auth = new AuthResource(http);
+    this.users = new UsersResource(http);
+    this.organizations = new OrganizationsResource(http);
+    this.sessions = new SessionsResource(http);
+    this.merchants = new MerchantsResource(http);
+    this.compliance = new ComplianceResource(http);
+    this.admin = new AdminResource(http);
+    this.auditLog = new AuditLogResource(http);
   }
 }
 

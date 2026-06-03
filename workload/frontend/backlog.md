@@ -38,8 +38,8 @@ buildable today.
 
 | # | Work / Flow | Group | § / feNN | BE | Depends on | Status |
 |---|-------------|-------|----------|----|------------|--------|
-| 09 | [work09](work/work09.md) / [flow09](flow/flow09.md) — Auth (login/register/forgot/MFA) | Feature | §3.2 | 09 | 03,04,08 | todo |
-| 10 | [work10](work/work10.md) / [flow10](flow/flow10.md) — Account & Security (profile/sessions/API keys/orgs) | Feature | §3.2 | 09 | 08,09 | todo |
+| 09 | [work09](work/work09.md) / [flow09](flow/flow09.md) — Auth (login/register/forgot/MFA) | Feature | §3.2 | 09 | 03,04,08 | done |
+| 10 | [work10](work/work10.md) / [flow10](flow/flow10.md) — Account & Security (profile/sessions/API keys/orgs) | Feature | §3.2 | 09 | 08,09 | done |
 | 11 | [work11](work/work11.md) / [flow11](flow/flow11.md) — PayLinks Management (list/create modal/detail/cancel/QR) | Feature | §3.3 / fe04 | 01 | 03,04 | todo |
 | 12 | [work12](work/work12.md) / [flow12](flow/flow12.md) — Payments (list/detail/timeline) | Feature | §3.3 | 02 | 03 | todo |
 | 13 | [work13](work/work13.md) / [flow13](flow/flow13.md) — Public Resolve & Pay (payer) | Feature | §3.1 / fe05 | 01,02,04 | 03,04,05 | todo |

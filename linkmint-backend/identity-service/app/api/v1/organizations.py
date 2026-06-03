@@ -45,6 +45,23 @@ async def create_org(
     )
 
 
+@router.get("", response_model=schemas.OrgListResponse)
+async def list_orgs(services: ServicesDep, principal: PrincipalDep) -> schemas.OrgListResponse:
+    orgs = await services.orgs.list_for_user(uuid.UUID(principal.user_id))
+    return schemas.OrgListResponse(
+        items=[
+            schemas.OrgResponse(
+                org_id=str(org.org_id),
+                name=org.name,
+                type=org.type,
+                role=role,
+                created_at=org.created_at,
+            )
+            for org, role in orgs
+        ]
+    )
+
+
 @router.post("/{org_id}/members", status_code=201)
 async def add_member(
     org_id: str,

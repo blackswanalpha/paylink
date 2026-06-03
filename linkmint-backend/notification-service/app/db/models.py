@@ -120,3 +120,30 @@ class InboxNotificationRow(Base):
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class NotificationPreferenceRow(Base):
+    """A recipient's notification preferences, scoped to the same creator/merchant ADDRESS the inbox
+    uses (``X-Creator-Addr``, lowercased). Two flag maps drive the fan-out (``app.domain.service``):
+    ``channels`` (``in_app``/``email``/``sms``) and ``events`` (the ``paylink.*``/``payment.*``).
+
+    Opt-out semantics: a missing recipient row — or a missing key within a map — means *enabled*, so
+    a brand-new recipient gets everything until they turn something off. One row per recipient
+    (``recipient_addr`` UNIQUE); the API upserts it.
+    """
+
+    __tablename__ = "notification_preferences"
+    __mapper_args__ = {"eager_defaults": True}
+
+    preference_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    recipient_addr: Mapped[str] = mapped_column(Text, nullable=False, unique=True)  # lowercased
+    channels: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    events: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )

@@ -16,7 +16,12 @@ from typing import Any
 
 from app.channels.base import SendError, SendResult
 from app.config import Settings
-from app.db.models import DeliveryRow, InboxNotificationRow, TemplateRow
+from app.db.models import (
+    DeliveryRow,
+    InboxNotificationRow,
+    NotificationPreferenceRow,
+    TemplateRow,
+)
 from app.db.repository import _decode_inbox_cursor, _encode_inbox_cursor
 from app.domain.models import DeliveryRecord
 
@@ -72,6 +77,7 @@ class FakeRepository:
     def __init__(self, templates: list[TemplateRow] | None = None) -> None:
         self.deliveries: dict[uuid.UUID, DeliveryRow] = {}
         self.inbox: dict[uuid.UUID, InboxNotificationRow] = {}
+        self.preferences: dict[str, NotificationPreferenceRow] = {}
         self._inbox_seq = 0
         self.templates: list[TemplateRow] = (
             templates if templates is not None else default_templates()
@@ -151,6 +157,33 @@ class FakeRepository:
                 row.read_at = datetime.now(UTC)
                 count += 1
         return count
+
+    # --- Notification preferences (mirrors NotifyRepository semantics) --------------------------
+
+    async def get_preferences(self, recipient_addr: str) -> NotificationPreferenceRow | None:
+        return self.preferences.get(recipient_addr.lower())
+
+    async def upsert_preferences(
+        self, recipient_addr: str, *, channels: dict[str, Any], events: dict[str, Any]
+    ) -> NotificationPreferenceRow:
+        addr = recipient_addr.lower()
+        now = datetime.now(UTC)
+        row = self.preferences.get(addr)
+        if row is None:
+            row = NotificationPreferenceRow(
+                preference_id=uuid.uuid4(),
+                recipient_addr=addr,
+                channels=channels,
+                events=events,
+                created_at=now,
+                updated_at=now,
+            )
+            self.preferences[addr] = row
+        else:
+            row.channels = channels
+            row.events = events
+            row.updated_at = now
+        return row
 
 
 class FakeDeliveryStore:

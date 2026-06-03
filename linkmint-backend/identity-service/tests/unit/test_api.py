@@ -7,6 +7,7 @@ import uuid
 import pyotp
 from fastapi.testclient import TestClient
 
+from tests._support import FakeRepository
 from tests.conftest import auth_headers, login, register
 
 PW = "passw0rd123"
@@ -54,6 +55,7 @@ def test_login_me_roundtrip(client: TestClient) -> None:
     assert body["email"] == "me@x.com"
     assert body["status"] == "ACTIVE"
     assert "payer" in body["user_roles"]
+    assert body["mfa_enabled"] is False
 
 
 def test_me_requires_auth(client: TestClient) -> None:
@@ -151,6 +153,102 @@ def test_mfa_verify_wrong_code(client: TestClient) -> None:
     assert r.json()["error"]["code"] == "MFA_INVALID"
 
 
+def test_mfa_enabled_reflected_in_profile(client: TestClient) -> None:
+    register(client, "mfaprofile@x.com")
+    headers = {"Authorization": f"Bearer {login(client, 'mfaprofile@x.com')['access_token']}"}
+    assert client.get("/v1/users/me", headers=headers).json()["mfa_enabled"] is False
+    secret = _enroll_activate(client, headers)
+    assert client.get("/v1/users/me", headers=headers).json()["mfa_enabled"] is True
+    code = pyotp.TOTP(secret).now()
+    assert (
+        client.post("/v1/auth/mfa/disable", headers=headers, json={"code": code}).status_code == 200
+    )
+    assert client.get("/v1/users/me", headers=headers).json()["mfa_enabled"] is False
+
+
+# ── password reset ──
+def test_password_reset_unknown_user_returns_ok_without_token(client: TestClient) -> None:
+    # Anti-enumeration: an unregistered identifier still gets a 200 with the same shape, no token.
+    r = client.post("/v1/auth/password/reset-request", json={"email": "ghost@x.com"})
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok", "reset_token": None}
+
+
+def test_password_reset_known_user_returns_dev_token(client: TestClient) -> None:
+    register(client, "reset@x.com")
+    r = client.post("/v1/auth/password/reset-request", json={"email": "reset@x.com"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "ok"
+    assert r.json()["reset_token"]  # dev flag on in tests → token echoed
+
+
+def test_password_reset_confirm_changes_password_and_revokes_sessions(client: TestClient) -> None:
+    register(client, "reset2@x.com")
+    tokens = login(client, "reset2@x.com")
+    token = client.post("/v1/auth/password/reset-request", json={"email": "reset2@x.com"}).json()[
+        "reset_token"
+    ]
+    confirmed = client.post(
+        "/v1/auth/password/reset-confirm", json={"token": token, "new_password": "newpassw0rd"}
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json() == {"status": "reset"}
+    # old password no longer works
+    old = client.post("/v1/auth/login", json={"email": "reset2@x.com", "password": PW})
+    assert old.status_code == 401
+    assert old.json()["error"]["code"] == "INVALID_CREDENTIALS"
+    # new password does
+    assert login(client, "reset2@x.com", "newpassw0rd")
+    # the pre-reset refresh token was revoked (all sessions killed on reset)
+    dead = client.post("/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert dead.status_code == 401
+
+
+def test_password_reset_token_is_single_use(client: TestClient) -> None:
+    register(client, "reset3@x.com")
+    token = client.post("/v1/auth/password/reset-request", json={"email": "reset3@x.com"}).json()[
+        "reset_token"
+    ]
+    first = client.post(
+        "/v1/auth/password/reset-confirm", json={"token": token, "new_password": "newpassw0rd"}
+    )
+    assert first.status_code == 200
+    second = client.post(
+        "/v1/auth/password/reset-confirm", json={"token": token, "new_password": "another0ne"}
+    )
+    assert second.status_code == 401
+    assert second.json()["error"]["code"] == "INVALID_TOKEN"
+
+
+def test_password_reset_confirm_rejects_garbage_token(client: TestClient) -> None:
+    r = client.post(
+        "/v1/auth/password/reset-confirm",
+        json={"token": "not-a-real-token", "new_password": "newpassw0rd"},
+    )
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "INVALID_TOKEN"
+
+
+def test_password_reset_request_requires_one_identifier(client: TestClient) -> None:
+    r = client.post("/v1/auth/password/reset-request", json={})
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "INVALID_PAYLOAD"
+
+
+def test_password_reset_emits_event_without_token(
+    client: TestClient, fake_repo: FakeRepository
+) -> None:
+    register(client, "resetev@x.com")
+    body = client.post("/v1/auth/password/reset-request", json={"email": "resetev@x.com"}).json()
+    requested = [e for e in fake_repo.events if e[2] == "identity.auth.password_reset_requested"]
+    assert len(requested) == 1
+    payload = requested[0][3]
+    assert "user_id" in payload
+    # the raw token must never appear in the durable event payload
+    assert body["reset_token"] not in payload.values()
+    assert "token" not in payload
+
+
 # ── orgs / api keys ──
 def _create_org(client: TestClient, headers: dict[str, str], name: str = "Acme") -> dict:
     r = client.post("/v1/organizations", headers=headers, json={"name": name, "type": "merchant"})
@@ -188,6 +286,36 @@ def test_api_key_unknown_scope_rejected(client: TestClient) -> None:
     )
     assert r.status_code == 400
     assert r.json()["error"]["code"] == "INVALID_PAYLOAD"
+
+
+def test_list_my_organizations(client: TestClient) -> None:
+    headers = auth_headers(client, "lister@x.com")
+    assert client.get("/v1/organizations", headers=headers).json()["items"] == []
+    a = _create_org(client, headers, "Alpha")
+    b = _create_org(client, headers, "Beta")
+    listed = client.get("/v1/organizations", headers=headers).json()["items"]
+    # Names come back (the whole point), newest first, with the caller's role per org.
+    assert [o["name"] for o in listed] == ["Beta", "Alpha"]
+    assert all(o["role"] == "owner" for o in listed)
+    assert {o["org_id"] for o in listed} == {a["org_id"], b["org_id"]}
+
+
+def test_list_organizations_scoped_to_membership(client: TestClient) -> None:
+    owner_h = auth_headers(client, "owner-scoped@x.com")
+    org = _create_org(client, owner_h, "Private")
+    member_id = register(client, "member-scoped@x.com")
+    client.post(
+        f"/v1/organizations/{org['org_id']}/members",
+        headers=owner_h,
+        json={"user_id": member_id, "role": "viewer"},
+    )
+    member_h = {"Authorization": f"Bearer {login(client, 'member-scoped@x.com')['access_token']}"}
+    member_orgs = client.get("/v1/organizations", headers=member_h).json()["items"]
+    assert [o["name"] for o in member_orgs] == ["Private"]
+    assert member_orgs[0]["role"] == "viewer"
+    # An outsider belongs to nothing.
+    outsider_h = auth_headers(client, "outsider-scoped@x.com")
+    assert client.get("/v1/organizations", headers=outsider_h).json()["items"] == []
 
 
 # ── members + RBAC ──

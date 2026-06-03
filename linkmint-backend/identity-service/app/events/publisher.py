@@ -24,6 +24,8 @@ API_KEY_ISSUED = "identity.api_key.issued"
 API_KEY_REVOKED = "identity.api_key.revoked"
 MFA_ENABLED = "identity.mfa.enabled"
 AUTH_FAILED = "identity.auth.failed"
+PASSWORD_RESET_REQUESTED = "identity.auth.password_reset_requested"
+PASSWORD_RESET_SUCCEEDED = "identity.auth.password_reset_succeeded"
 
 
 class Publisher(ABC):

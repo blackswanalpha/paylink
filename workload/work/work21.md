@@ -1,8 +1,8 @@
 # work21 — fee-pricing-service (tiers, FX, quoting)
 
-> **Seeded** — expand with `/work 21` when picked up.
+> **Done** (2026-06-03) — `linkmint-backend/fee-pricing-service/`, 76 tests @ 92%, invariants PASS (8/8), ADR-014.
 
-- **Status:** todo · **Owner:** service-builder · **Stack:** Python/FastAPI · **Depends on:** 10 · **Flow:** [flow21](../flow/flow21.md)
+- **Status:** done · **Owner:** service-builder · **Stack:** Python/FastAPI · **Depends on:** 10 · **Flow:** [flow21](../flow/flow21.md)
 - **Phase:** 2 / Beta · **Spec:** backendfeatures.md §2.8
 
 ## Goal

@@ -86,6 +86,11 @@ class OrgsService:
         )
         return membership
 
+    async def list_for_user(self, user_id: uuid.UUID) -> list[tuple[OrganizationRow, str]]:
+        """Every org the user belongs to + their role. No RBAC gate — a user always sees their own
+        memberships (this is the source of truth the dashboard derives org names from)."""
+        return await self._repo.list_orgs_for_user(user_id)
+
     async def list_members(self, *, actor_id: uuid.UUID, org_id: uuid.UUID) -> list[MembershipRow]:
         rbac.require(await self._actor_roles(actor_id), str(org_id), Permission.MEMBER_READ)
         return await self._repo.list_members(org_id)

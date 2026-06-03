@@ -1,7 +1,7 @@
 {
   "name": "@linkmint/sdk",
   "version": "0.1.0",
-  "description": "Typed TypeScript client for the LinkMint /v1 API (PayLinks + payments).",
+  "description": "Typed TypeScript client for the LinkMint /v1 API (paylinks, payments, notifications, auth, users, organizations, sessions, merchants, compliance, admin, audit-log).",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.cjs",

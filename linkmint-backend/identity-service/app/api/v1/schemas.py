@@ -108,6 +108,38 @@ class MfaVerifyResponse(BaseModel):
     enabled: bool = True
 
 
+class PasswordResetRequestRequest(BaseModel):
+    email: str | None = None
+    phone: str | None = None
+
+    _v_email = field_validator("email")(classmethod(lambda cls, v: _norm_email(v)))
+
+    @model_validator(mode="after")
+    def _exactly_one_identifier(self) -> PasswordResetRequestRequest:
+        if bool(self.email) == bool(self.phone):
+            raise ValueError("provide exactly one of email or phone")
+        return self
+
+    @property
+    def identifier(self) -> str:
+        return self.email or self.phone or ""
+
+
+class PasswordResetRequestResponse(BaseModel):
+    status: str = "ok"
+    # Populated ONLY in dev (password_reset_dev_return_token); null in production.
+    reset_token: str | None = None
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=1)
+    new_password: str = Field(min_length=8, max_length=256)
+
+
+class PasswordResetConfirmResponse(BaseModel):
+    status: str = "reset"
+
+
 # ── users / api keys ──
 class OrgRoleEntry(BaseModel):
     org_id: str
@@ -120,6 +152,7 @@ class UserProfileResponse(BaseModel):
     phone: str | None
     kyc_tier: int
     status: str
+    mfa_enabled: bool
     roles: list[OrgRoleEntry]
     user_roles: list[str]
     created_at: datetime
@@ -199,6 +232,10 @@ class OrgResponse(BaseModel):
     type: str
     role: str
     created_at: datetime
+
+
+class OrgListResponse(BaseModel):
+    items: list[OrgResponse]
 
 
 class AddMemberRequest(BaseModel):

@@ -24,7 +24,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models import DeliveryRow, InboxNotificationRow, TemplateRow
+from app.db.models import (
+    DeliveryRow,
+    InboxNotificationRow,
+    NotificationPreferenceRow,
+    TemplateRow,
+)
 from app.db.session import make_sync_sessionmaker
 from app.domain.models import EXHAUSTED, FAILED, SENT, DeliveryRecord
 
@@ -176,6 +181,36 @@ class NotifyRepository:
         result = await self._session.execute(stmt)
         await self._session.commit()
         return cast("CursorResult[Any]", result).rowcount or 0
+
+    # --- Notification preferences (address-scoped channel/event opt-outs) ------------------------
+
+    async def get_preferences(self, recipient_addr: str) -> NotificationPreferenceRow | None:
+        """Fetch a recipient's stored preferences row, or ``None`` if they've never set any."""
+        stmt = (
+            select(NotificationPreferenceRow)
+            .where(NotificationPreferenceRow.recipient_addr == recipient_addr.lower())
+            .limit(1)
+        )
+        return (await self._session.execute(stmt)).scalars().first()
+
+    async def upsert_preferences(
+        self, recipient_addr: str, *, channels: dict[str, Any], events: dict[str, Any]
+    ) -> NotificationPreferenceRow:
+        """Insert or replace a recipient's preferences (one row per ``recipient_addr``)."""
+        addr = recipient_addr.lower()
+        row = await self.get_preferences(addr)
+        if row is None:
+            row = NotificationPreferenceRow(
+                preference_id=uuid.uuid4(), recipient_addr=addr, channels=channels, events=events
+            )
+            self._session.add(row)
+        else:
+            row.channels = channels
+            row.events = events
+            row.updated_at = datetime.now(UTC)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return row
 
 
 class SyncDeliveryStore:

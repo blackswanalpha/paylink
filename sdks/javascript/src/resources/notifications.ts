@@ -6,6 +6,8 @@ import type {
   MarkAllReadResult,
   Notification,
   NotificationList,
+  NotificationPreferences,
+  UpdateNotificationPreferencesInput,
 } from '../types';
 
 export class NotificationsResource {
@@ -53,6 +55,36 @@ export class NotificationsResource {
       {
         method: 'POST',
         path: '/v1/notifications/read-all',
+        idempotencyKey: options.idempotencyKey ?? this.http.newIdempotencyKey(),
+      },
+      options,
+    );
+  }
+
+  /**
+   * Get the caller's notification preferences (the full effective set). `GET
+   * /v1/notifications/preferences` → 200. Scoped server-side to the authenticated caller.
+   */
+  getPreferences(options: RequestOptions = {}): Promise<NotificationPreferences> {
+    return this.http.request<NotificationPreferences>(
+      { method: 'GET', path: '/v1/notifications/preferences' },
+      options,
+    );
+  }
+
+  /**
+   * Update the caller's notification preferences. `PUT /v1/notifications/preferences` → 200. A patch
+   * — only the channels/events you pass change; the response is the full effective set. Idempotent.
+   */
+  updatePreferences(
+    input: UpdateNotificationPreferencesInput,
+    options: RequestOptions = {},
+  ): Promise<NotificationPreferences> {
+    return this.http.request<NotificationPreferences>(
+      {
+        method: 'PUT',
+        path: '/v1/notifications/preferences',
+        body: input,
         idempotencyKey: options.idempotencyKey ?? this.http.newIdempotencyKey(),
       },
       options,

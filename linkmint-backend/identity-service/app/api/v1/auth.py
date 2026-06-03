@@ -101,6 +101,25 @@ async def logout(
     )
 
 
+@router.post("/password/reset-request")
+async def password_reset_request(
+    req: schemas.PasswordResetRequestRequest, services: ServicesDep
+) -> schemas.PasswordResetRequestResponse:
+    # Anti-enumeration: ALWAYS 200 with an identical body whether or not the account exists. Not
+    # idempotency-keyed — the dev response carries a fresh secret we must not cache.
+    token = await services.auth.request_password_reset(identifier=req.identifier)
+    return schemas.PasswordResetRequestResponse(reset_token=token)
+
+
+@router.post("/password/reset-confirm")
+async def password_reset_confirm(
+    req: schemas.PasswordResetConfirmRequest, services: ServicesDep
+) -> schemas.PasswordResetConfirmResponse:
+    # Single-use by token; a bad/expired/used token raises INVALID_TOKEN (401).
+    await services.auth.confirm_password_reset(token=req.token, new_password=req.new_password)
+    return schemas.PasswordResetConfirmResponse()
+
+
 @router.post("/oauth/{provider}/start")
 async def oauth_start(
     provider: str, req: schemas.OAuthStartRequest, services: ServicesDep

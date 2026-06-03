@@ -54,9 +54,10 @@ export interface ResolvedConfig {
 
 /** An internal, fully-specified HTTP request built by a resource method. */
 export interface HttpRequest {
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   query?: Record<string, string | number | undefined>;
+  /** Plain JSON body (serialized to JSON) or a `FormData` (sent as multipart, untouched). */
   body?: unknown;
   /** When set, sent as the `Idempotency-Key` header. */
   idempotencyKey?: string;
@@ -143,7 +144,9 @@ export class HttpClient {
       ...this.config.defaultHeaders,
       ...options.headers,
     };
-    if (req.body !== undefined) {
+    // A FormData body is left to the runtime, which sets `Content-Type: multipart/form-data` with
+    // the correct boundary; forcing `application/json` here would corrupt the multipart parse.
+    if (req.body !== undefined && !isFormData(req.body)) {
       headers['Content-Type'] = 'application/json';
     }
     await applyAuth(headers, this.config.auth);
@@ -191,10 +194,21 @@ function linkSignal(signal: AbortSignal | undefined, controller: AbortController
   return () => signal.removeEventListener('abort', onAbort);
 }
 
-/** Serialize a request body to JSON, surfacing a non-serializable body as a typed SDK error. */
-function serializeBody(body: unknown): string | undefined {
+/** True when `body` is a `FormData` instance (multipart upload), guarding for runtimes without it. */
+function isFormData(body: unknown): body is FormData {
+  return typeof FormData !== 'undefined' && body instanceof FormData;
+}
+
+/**
+ * Serialize a request body. A `FormData` is passed through untouched (multipart); anything else is
+ * JSON-encoded, surfacing a non-serializable body as a typed SDK error.
+ */
+function serializeBody(body: unknown): string | FormData | undefined {
   if (body === undefined) {
     return undefined;
+  }
+  if (isFormData(body)) {
+    return body;
   }
   try {
     return JSON.stringify(body);

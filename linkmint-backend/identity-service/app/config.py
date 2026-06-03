@@ -70,6 +70,12 @@ class Settings(BaseSettings):
     # ── Auth hardening ──
     auth_failed_threshold: int = 5  # emit identity.auth.failed after N consecutive failures
 
+    # ── Password reset ──
+    password_reset_token_ttl_seconds: int = 30 * 60  # short-lived reset window (spec: 15–30 min)
+    # DEV ONLY: echo the raw reset token in the reset-request response so the flow is testable
+    # without an email/SMS rail. MUST stay False in production — the token would otherwise leak.
+    password_reset_dev_return_token: bool = False
+
     # ── OAuth (stub + seam). oauth_fake=true selects the deterministic local fake provider
     # (verifiable without external creds — the work04 DARAJA_STUB analog). The real Google/Apple/
     # GitHub flows are config-driven via the per-provider creds below but aren't verified locally.
