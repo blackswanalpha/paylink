@@ -56,6 +56,22 @@ class InboxListResponse(BaseModel):
     next_cursor: str | None
 
 
+class NotificationPreferencesView(BaseModel):
+    """A recipient's effective preferences (full set, defaults merged in). ``updated_at`` is null
+    until they've saved at least once."""
+
+    channels: dict[str, bool]
+    events: dict[str, bool]
+    updated_at: datetime | None = None
+
+
+class UpdatePreferencesRequest(BaseModel):
+    """A preferences patch — only the keys present are changed; unknown keys are ignored."""
+
+    channels: dict[str, bool] | None = None
+    events: dict[str, bool] | None = None
+
+
 class DeliveryView(BaseModel):
     """Operational view of a delivery. ``recipient`` is MASKED (never the raw contact)."""
 

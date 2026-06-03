@@ -67,6 +67,7 @@ def test_upgrade_from_empty_then_downgrade() -> None:
                 "api_keys",
                 "sessions",
                 "identity_events",
+                "password_reset_tokens",
             } <= tables
 
             indexes = set(
@@ -81,6 +82,8 @@ def test_upgrade_from_empty_then_downgrade() -> None:
                 "ix_api_keys_org_status",
                 "ix_sessions_user_id",
                 "uq_sessions_refresh_token",
+                "uq_password_reset_token_hash",
+                "ix_password_reset_user_id",
             } <= indexes
         engine.dispose()
 

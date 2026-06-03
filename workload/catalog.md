@@ -30,7 +30,12 @@ else is on the wire.
 ## Topics
 
 `paylink` · `payment` · `chain` · `merchant` · `compliance` · `identity` · `notification` ·
-`escrow` · `settlement` · `fee` (10 domain topics; 1 partition / 1 replica locally).
+`escrow` · `settlement` · `fee` · `pricing` · `fx` · `invoice` (13 domain topics; 1 partition / 1
+replica locally). The `pricing`/`fx`/`invoice` topics carry the fee-pricing (work21) and
+invoice-subscription (work19) events: per the model below, the topic is the logical name's first
+dot-segment, so `pricing.fee_quote.issued` → `pricing`, `fx.rate.updated` → `fx`,
+`invoice.platform_fee.issued` / `invoice.*` → `invoice`. (`fee` is reserved for future fee-domain
+events whose name starts `fee.`.)
 
 ## Catalog
 
@@ -71,7 +76,7 @@ else is on the wire.
 | `notification.delivered` / `notification.bounced` | notification | notification-service | (reporting) | 2 |
 | `escrow.created` / `escrow.released` / `escrow.refunded` / `escrow.disputed` | escrow | escrow-manager | notification-service | 2 |
 | `settlement.batch_created` / `settlement.completed` / `payout.*` | settlement | settlement-service | reporting, reconciliation | 2 |
-| `pricing.fee_quote.issued` / `fx.rate.updated` / `invoice.platform_fee.issued` | fee | fee-pricing-service | invoice-subscription | 2 |
+| `pricing.fee_quote.issued` / `fx.rate.updated` / `invoice.platform_fee.issued` | pricing / fx / invoice | fee-pricing-service | invoice-subscription | 2 |
 
 > **Phase-2 rows** (escrow / settlement / fee / refund / most compliance) are the **contract ahead
 > of the service**: the producing service is not yet built (see [backlog.md](backlog.md)), but the

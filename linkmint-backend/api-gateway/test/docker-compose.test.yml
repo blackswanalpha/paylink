@@ -38,18 +38,42 @@ services:
       timeout: 3s
       retries: 10
 
+  # work08 — stands in for the identity-family pass-through upstreams (identity/merchant/compliance/
+  # admin/audit). All five share the same pass-through wiring, so one echo exercises the behavior.
+  echo-identity:
+    image: python:3.12-slim
+    environment:
+      ECHO_NAME: identity
+    volumes:
+      - ./echo_server.py:/echo_server.py:ro
+    command: ["python", "/echo_server.py"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/').status==200 else 1)"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
   api-gateway:
     build:
       context: ..
     environment:
       GATEWAY_PAYLINK_SERVICE_URL: http://echo-paylink:8080
       GATEWAY_PAYMENT_ORCHESTRATOR_URL: http://echo-payments:8080
+      # work08 pass-through upstreams — point identity + audit at the shared echo so routing,
+      # Authorization forwarding, and the audit GET-only rule are directly observable.
+      GATEWAY_IDENTITY_SERVICE_URL: http://echo-identity:8080
+      GATEWAY_AUDIT_SERVICE_URL: http://echo-identity:8080
+      # work21 — fee-pricing is the same pass-through wiring; point it at the shared echo too.
+      GATEWAY_FEE_PRICING_SERVICE_URL: http://echo-identity:8080
       GATEWAY_REDIS_HOST: redis
       GATEWAY_REDIS_PORT: "6379"
       GATEWAY_JWT_ISSUER: linkmint-dev
-      GATEWAY_JWT_DEV_SECRET: test-secret
+      # Keep the gateway's secret in lock-step with what conftest mints (it reads the same env var,
+      # defaulting to test-secret). Without this, `make test` — which exports the Makefile's render
+      # default into pytest's env — would sign tokens the gateway can't verify. Same for the API key.
+      GATEWAY_JWT_DEV_SECRET: ${GATEWAY_JWT_DEV_SECRET:-test-secret}
       GATEWAY_JWT_CREATOR_ADDR_CLAIM: creator_addr
-      GATEWAY_PARTNER_API_KEY: test-partner-key
+      GATEWAY_PARTNER_API_KEY: ${GATEWAY_PARTNER_API_KEY:-test-partner-key}
       GATEWAY_PARTNER_CREATOR_ADDR: "0x00000000000000000000000000000000000000bb"
       GATEWAY_RATE_LIMIT_PER_MINUTE: "100"
     ports:
@@ -60,6 +84,8 @@ services:
       echo-paylink:
         condition: service_healthy
       echo-payments:
+        condition: service_healthy
+      echo-identity:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "kong", "health"]

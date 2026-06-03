@@ -23,6 +23,7 @@ from app.db.models import (
     MfaFactorRow,
     OAuthIdentityRow,
     OrganizationRow,
+    PasswordResetTokenRow,
     SessionRow,
     UserRow,
 )
@@ -55,6 +56,7 @@ def make_settings(**overrides: Any) -> Settings:
         "oauth_fake": True,
         "event_publisher_mode": "noop",
         "auth_failed_threshold": 3,
+        "password_reset_dev_return_token": True,  # so the reset flow is testable end-to-end
     }
     base.update(overrides)
     return Settings(**base)
@@ -71,6 +73,7 @@ class FakeRepository:
         self.memberships: dict[tuple[uuid.UUID, uuid.UUID], MembershipRow] = {}
         self.api_keys: dict[uuid.UUID, ApiKeyRow] = {}
         self.sessions: dict[uuid.UUID, SessionRow] = {}
+        self.reset_tokens: dict[uuid.UUID, PasswordResetTokenRow] = {}
         self.events: list[tuple[str, uuid.UUID | None, str, dict[str, Any]]] = []
 
     # ── users ──
@@ -152,6 +155,17 @@ class FakeRepository:
     async def list_memberships_for_user(self, user_id: uuid.UUID) -> list[MembershipRow]:
         return [m for (_, uid), m in self.memberships.items() if uid == user_id]
 
+    async def list_orgs_for_user(
+        self, user_id: uuid.UUID
+    ) -> list[tuple[OrganizationRow, str]]:
+        pairs = [
+            (self.orgs[oid], m.role)
+            for (oid, uid), m in self.memberships.items()
+            if uid == user_id and oid in self.orgs
+        ]
+        pairs.sort(key=lambda p: p[0].created_at, reverse=True)
+        return pairs
+
     async def count_owners(self, org_id: uuid.UUID) -> int:
         return sum(
             1 for (oid, _), m in self.memberships.items() if oid == org_id and m.role == "owner"
@@ -196,6 +210,24 @@ class FakeRepository:
 
     async def list_active_sessions_for_user(self, user_id: uuid.UUID) -> list[SessionRow]:
         return [s for s in self.sessions.values() if s.user_id == user_id and s.revoked_at is None]
+
+    # ── password reset tokens ──
+    async def insert_password_reset_token(
+        self, row: PasswordResetTokenRow
+    ) -> PasswordResetTokenRow:
+        if row.created_at is None:
+            row.created_at = datetime.now(UTC)
+        self.reset_tokens[row.token_id] = row
+        return row
+
+    async def get_password_reset_by_hash(self, token_hash: str) -> PasswordResetTokenRow | None:
+        return next((r for r in self.reset_tokens.values() if r.token_hash == token_hash), None)
+
+    async def invalidate_user_reset_tokens(self, user_id: uuid.UUID) -> None:
+        now = datetime.now(UTC)
+        for r in self.reset_tokens.values():
+            if r.user_id == user_id and r.used_at is None:
+                r.used_at = now
 
     # ── events ──
     async def add_event(

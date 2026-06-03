@@ -33,7 +33,13 @@ export type KnownErrorCode =
   | 'NOT_FOUND'
   | 'RATE_LIMITED'
   | 'BAD_GATEWAY'
-  | 'SERVICE_UNAVAILABLE';
+  | 'SERVICE_UNAVAILABLE'
+  // identity / merchant / compliance / admin / audit (work08 services)
+  | 'FORBIDDEN'
+  | 'MFA_REQUIRED'
+  | 'COMPLIANCE_NOT_FOUND'
+  | 'UNKNOWN_PROVIDER'
+  | 'INVALID_SIGNATURE';
 
 /**
  * Error code as carried in the envelope. Known codes get autocompletion; unknown future codes

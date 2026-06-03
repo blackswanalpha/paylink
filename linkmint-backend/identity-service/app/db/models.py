@@ -123,6 +123,24 @@ class SessionRow(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class PasswordResetTokenRow(Base):
+    """Single-use password-reset tokens. The raw token is never stored — only its SHA-256 hash."""
+
+    __tablename__ = "password_reset_tokens"
+    __mapper_args__ = {"eager_defaults": True}
+
+    token_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("identity.users.user_id"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)  # SHA-256 hash of the token
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class IdentityEventRow(Base):
     """Durable outbox — the source of truth work15 will drain onto Kafka/SQS."""
 

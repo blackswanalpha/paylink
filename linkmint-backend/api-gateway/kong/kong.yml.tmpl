@@ -133,6 +133,100 @@ services:
               hide_credentials: true
               run_on_preflight: true
 
+  # ── identity / merchant / compliance / admin / audit (work08 — additive, PASS-THROUGH) ────────
+  # These services authenticate the caller themselves by verifying the RS256 token identity-service
+  # issues (iss=linkmint-identity); they do NOT read X-Creator-Addr. So unlike the routes above they
+  # carry NO jwt/key-auth plugin: the gateway forwards Authorization untouched and the service is the
+  # authority. The post-function `access` block already early-returns for any route whose name is not
+  # paylinks/payments/notifications, so it neither strips Authorization nor injects X-Creator-Addr on
+  # these routes — exactly what RS256 self-verification needs. Public auth endpoints (register/login/
+  # refresh) work because nothing here requires a credential; authenticated routes 401 in-service.
+  # The global error-envelope + correlation-id + rate-limit plugins still apply.
+
+  # identity-service (work09): auth (public + authed), users, organizations, sessions.
+  - name: identity-service
+    url: ${GATEWAY_IDENTITY_SERVICE_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: identity
+        paths: ["/v1/auth", "/v1/users", "/v1/organizations", "/v1/sessions"]
+        strip_path: false
+        preserve_host: false
+
+  # merchant-onboarding (work10): onboard, documents, bank-accounts, contracts, fee-tier.
+  - name: merchant-onboarding
+    url: ${GATEWAY_MERCHANT_SERVICE_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: merchants
+        paths: ["/v1/merchants"]
+        strip_path: false
+        preserve_host: false
+
+  # compliance-risk (work12): compliance status + KYC sessions (callbacks are HMAC-gated in-service).
+  - name: compliance-risk
+    url: ${GATEWAY_COMPLIANCE_SERVICE_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: compliance
+        paths: ["/v1/compliance", "/v1/kyc"]
+        strip_path: false
+        preserve_host: false
+
+  # admin-backoffice (work11): ops search + entity drill-down (RS256 + MFA + scope enforced in-service).
+  - name: admin-backoffice
+    url: ${GATEWAY_ADMIN_SERVICE_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: admin
+        paths: ["/v1/admin"]
+        strip_path: false
+        preserve_host: false
+
+  # audit-log-service (work13): READS ONLY at the edge. The POST intake is internal (X-Internal-Token)
+  # and must not be reachable from the public ingress, so the route matches GET only — a POST falls
+  # through to the catch-all 404.
+  - name: audit-log-service
+    url: ${GATEWAY_AUDIT_SERVICE_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: audit-log
+        paths: ["/v1/audit-log"]
+        methods: ["GET"]
+        strip_path: false
+        preserve_host: false
+
+  # fee-pricing-service (work21): quoting, FX rates, tiers, merchant pricing. PASS-THROUGH (RS256
+  # self-verify in-service; the merchant-pricing route is namespaced under /v1/pricing to avoid the
+  # /v1/merchants prefix collision with merchant-onboarding). The /v1/internal/* surface is NOT
+  # routed here — it falls through to the catch-all 404 (trusted-network only).
+  - name: fee-pricing-service
+    url: ${GATEWAY_FEE_PRICING_SERVICE_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: fee-pricing
+        paths: ["/v1/pricing", "/v1/fx"]
+        strip_path: false
+        preserve_host: false
+
 consumers:
   # Shared anonymous fallback — selected by the auth plugins when no valid credential is presented.
   - id: 11111111-1111-1111-1111-111111111111
@@ -202,16 +296,21 @@ plugins:
       # ACCESS: inject X-Creator-Addr + strip spoofed/credential headers + require auth.
       access:
         - |
+          -- Anti-spoofing: the client may NEVER set these on ANY route; the gateway is authoritative.
+          -- Stripped before the route check so a spoofed header can't ride through to a work08
+          -- pass-through upstream either (those services ignore X-Creator-Addr, but defense-in-depth).
+          kong.service.request.clear_header("X-Creator-Addr")
+          kong.service.request.clear_header("X-Partner-Id")
+
           local route = kong.router.get_route()
           local rn = route and route.name or ""
-          -- Only the authenticated /v1 routes carry identity; skip the catch-all (404) route.
+          -- Only the authenticated /v1 routes carry gateway-injected identity. The work08 pass-through
+          -- routes (identity/merchant/compliance/admin/audit) self-verify the forwarded bearer token,
+          -- so the gateway neither requires a credential nor injects X-Creator-Addr for them; the
+          -- catch-all (404) route is likewise skipped.
           if rn ~= "paylinks" and rn ~= "payments" and rn ~= "notifications" then
             return
           end
-
-          -- Anti-spoofing: the client may never set these; the gateway is authoritative.
-          kong.service.request.clear_header("X-Creator-Addr")
-          kong.service.request.clear_header("X-Partner-Id")
 
           -- Require authentication. Auth plugins fall through to the anonymous consumer (no
           -- credential) on any failure; reject that here.

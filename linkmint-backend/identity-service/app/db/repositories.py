@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import ColumnElement, func, or_, select
@@ -22,6 +23,7 @@ from app.db.models import (
     MfaFactorRow,
     OAuthIdentityRow,
     OrganizationRow,
+    PasswordResetTokenRow,
     SessionRow,
     UserRow,
 )
@@ -125,6 +127,18 @@ class IdentityRepository:
         stmt = select(MembershipRow).where(MembershipRow.user_id == user_id)
         return list((await self._session.execute(stmt)).scalars().all())
 
+    async def list_orgs_for_user(
+        self, user_id: uuid.UUID
+    ) -> list[tuple[OrganizationRow, str]]:
+        """The user's organizations (joined for name/type) + their role in each, newest first."""
+        stmt = (
+            select(OrganizationRow, MembershipRow.role)
+            .join(MembershipRow, MembershipRow.org_id == OrganizationRow.org_id)
+            .where(MembershipRow.user_id == user_id)
+            .order_by(OrganizationRow.created_at.desc())
+        )
+        return [(org, role) for org, role in (await self._session.execute(stmt)).all()]
+
     async def count_owners(self, org_id: uuid.UUID) -> int:
         stmt = (
             select(func.count())
@@ -184,6 +198,29 @@ class IdentityRepository:
             SessionRow.user_id == user_id, SessionRow.revoked_at.is_(None)
         )
         return list((await self._session.execute(stmt)).scalars().all())
+
+    # ── password reset tokens ──
+    async def insert_password_reset_token(
+        self, row: PasswordResetTokenRow
+    ) -> PasswordResetTokenRow:
+        self._session.add(row)
+        await self._session.flush()
+        return row
+
+    async def get_password_reset_by_hash(self, token_hash: str) -> PasswordResetTokenRow | None:
+        stmt = select(PasswordResetTokenRow).where(PasswordResetTokenRow.token_hash == token_hash)
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
+    async def invalidate_user_reset_tokens(self, user_id: uuid.UUID) -> None:
+        """Stamp ``used_at`` on any outstanding (unused) tokens so only the latest can be live."""
+        now = datetime.now(UTC)
+        stmt = select(PasswordResetTokenRow).where(
+            PasswordResetTokenRow.user_id == user_id,
+            PasswordResetTokenRow.used_at.is_(None),
+        )
+        for row in (await self._session.execute(stmt)).scalars().all():
+            row.used_at = now
+        await self._session.flush()
 
     # ── events (outbox) ──
     async def add_event(

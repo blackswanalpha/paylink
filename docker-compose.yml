@@ -62,7 +62,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        for t in paylink payment chain merchant compliance identity notification escrow settlement fee; do
+        for t in paylink payment chain merchant compliance identity notification escrow settlement fee pricing fx invoice; do
           rpk topic create "$$t" --brokers redpanda:9092 -p 1 -r 1 || true
         done
         echo "redpanda topics ready"
@@ -673,6 +673,77 @@ services:
       retries: 10
       start_period: 25s
 
+  # work21 — fee-pricing-service (Python/FastAPI). The single source of "what does this payment
+  # cost": per-merchant tier pricing, per-rail fee schedules, FX quoting (rates locked at quote time
+  # for audit), and monthly platform-fee invoicing. Owns the `pricing` schema. JWT *consumer*
+  # (verifier-only): PRICING_JWT_PUBLIC_KEY_PEM is the public half of the FIXED dev keypair pinned on
+  # identity-service. Consumes merchant.onboarded / merchant.fee_tier.changed (merchant topic);
+  # publishes pricing.fee_quote.issued / fx.rate.updated / invoice.platform_fee.issued via the outbox
+  # relay (these route to the pricing/fx/invoice topics per topic_for — see catalog.md). A lifespan
+  # sweeper generates monthly platform-fee invoices. The platform fee here is DISTINCT from the
+  # on-chain 0.5% PLN inflation fee (rules.md A.5). Default profile — no chain dependency.
+  fee-pricing-service:
+    build:
+      context: .
+      dockerfile: linkmint-backend/fee-pricing-service/Dockerfile
+    environment:
+      PRICING_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
+      PRICING_REDIS_URL: redis://redis:6379/0
+      PRICING_JWT_ISSUER: linkmint-identity
+      PRICING_JWT_AUDIENCE: linkmint
+      PRICING_LOG_LEVEL: INFO
+      # work15 — publish pricing.*/fx.*/invoice.* via the outbox relay; consume merchant.* to keep
+      # the local merchant_pricing tier cache in sync.
+      PRICING_EVENT_PUBLISHER_MODE: kafka
+      PRICING_EVENT_CONSUMER_ENABLED: "true"
+      KAFKA_BROKERS: redpanda:9092
+      # FX: deterministic static rates locally (no external provider); 60s Redis cache.
+      PRICING_FX_PROVIDER: static
+      PRICING_FX_CACHE_TTL_SECONDS: "60"
+      PRICING_FX_STATIC_RATES: "USD:KES=129.50,EUR:KES=140.00,KES:KES=1"
+      # Monthly platform-fee invoice sweeper (idempotent per merchant+period).
+      PRICING_INVOICE_SWEEP_ENABLED: "true"
+      PRICING_INVOICE_SWEEP_INTERVAL_SECONDS: "3600"
+      # Trusted-network gate for /v1/internal/* (ADR-009). Trusted callers send the matching token.
+      PRICING_INTERNAL_SHARED_SECRET: devnet-internal-token
+      # A.6 ledger-posting seam OFF (per-service posting deferred in work16).
+      PRICING_LEDGER_POSTING_ENABLED: "false"
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: fee-pricing-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # Dev-only public key matching identity-service's pinned private key (see identity note above).
+      PRICING_JWT_PUBLIC_KEY_PEM: |-
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4ICsoMfDlpFGxfKDkwaO
+        CSicE31hGuzVJ5xSxfB1Ybl2yBg5pVMsOZ/Wg5xrW0Hiwi3Us7GWJowpLSCxizw7
+        dgmkrSmKbVU9z/q2nnJcb0gAWCKreBQ0AWS1K3onUXV2ACkp2fmRktpdTU9ZEkCm
+        dXcegWENBM4saL+UhFOHu0/U85ImhlqRxw+ccXwuq9V0GowWYjVGgUB0FOwd2wKY
+        XdgdirHZQ4w7MwJ4zyF3P/8g3+9mcuWRcLc3Onx7g2h7IcUp0rw9phOx/8bsGodw
+        FWx3y3ulTGriFc796lQb/7t8PZpYONULjPw6tABKVBC29hm4uh1M2Ab36UFrjZyV
+        DQIDAQAB
+        -----END PUBLIC KEY-----
+    ports:
+      - "8097:8097"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8097/internal/readyz').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
   # work02 — payment lifecycle conductor (Go/chi). Reacts to lVM chain events and reconciles
   # against on-chain truth (read-through RPC + WS). The chain devnet is `--profile e2e` only;
   # without it readyz reports the chain dep down (liveness/healthz stays up). With `--profile e2e`
@@ -731,6 +802,16 @@ services:
       GATEWAY_PAYMENT_ORCHESTRATOR_URL: http://payment-orchestrator:8080
       # FE work07 — route /v1/notifications* to the in-app inbox (auth required; X-Creator-Addr injected).
       GATEWAY_NOTIFICATION_SERVICE_URL: http://notification-service:8095
+      # work08 (FE SDK expansion) — additive PASS-THROUGH routes for the identity-family services.
+      # These verify the identity-issued RS256 token themselves; the gateway forwards Authorization
+      # untouched and injects NO X-Creator-Addr (the kong.yml.tmpl routes carry no jwt/key-auth plugin).
+      GATEWAY_IDENTITY_SERVICE_URL: http://identity-service:8090
+      GATEWAY_MERCHANT_SERVICE_URL: http://merchant-onboarding:8091
+      GATEWAY_COMPLIANCE_SERVICE_URL: http://compliance-risk:8093
+      GATEWAY_ADMIN_SERVICE_URL: http://admin-backoffice:8092
+      GATEWAY_AUDIT_SERVICE_URL: http://audit-log-service:8094
+      # work21 — additive pass-through upstream (fee-pricing; RS256 self-verify, no X-Creator-Addr).
+      GATEWAY_FEE_PRICING_SERVICE_URL: http://fee-pricing-service:8097
       GATEWAY_REDIS_HOST: redis
       GATEWAY_REDIS_PORT: "6379"
       GATEWAY_JWT_ISSUER: linkmint-dev
@@ -761,6 +842,19 @@ services:
       payment-orchestrator:
         condition: service_healthy
       notification-service:
+        condition: service_healthy
+      # work08 — additive pass-through upstreams (all default-profile, with healthchecks).
+      identity-service:
+        condition: service_healthy
+      merchant-onboarding:
+        condition: service_healthy
+      compliance-risk:
+        condition: service_healthy
+      admin-backoffice:
+        condition: service_healthy
+      audit-log-service:
+        condition: service_healthy
+      fee-pricing-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "kong", "health"]

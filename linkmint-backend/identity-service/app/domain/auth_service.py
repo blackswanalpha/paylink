@@ -9,10 +9,10 @@ from __future__ import annotations
 import secrets
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.config import Settings
-from app.db.models import OAuthIdentityRow, UserRow
+from app.db.models import OAuthIdentityRow, PasswordResetTokenRow, UserRow
 from app.db.repositories import IdentityRepository
 from app.domain.mfa_service import MfaService
 from app.domain.models import AuthTokens, UserStatus
@@ -24,8 +24,13 @@ from app.security.login_attempts import FailedLoginCounter
 from app.security.oauth.provider import AuthorizeRequest, OAuthError
 from app.security.oauth.registry import OAuthResolver
 from app.security.passwords import PasswordHashing
+from app.security.reset_tokens import hash_reset_token, mint_reset_token
 
 _Commit = Callable[[], Awaitable[None]]
+
+
+def _aware(dt: datetime) -> datetime:
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 class AuthService:
@@ -109,6 +114,58 @@ class AuthService:
 
     async def logout(self, user_id: uuid.UUID, refresh_token: str) -> None:
         await self._sessions.logout(user_id, refresh_token)
+
+    async def request_password_reset(self, *, identifier: str) -> str | None:
+        """Begin a password reset. ALWAYS succeeds for the caller (anti-enumeration) — the route
+        returns an identical 200 whether or not the account exists.
+
+        Returns the raw reset token ONLY when ``password_reset_dev_return_token`` is set (dev), so
+        the flow is testable without an email/SMS rail; otherwise returns None. Unknown users and
+        OAuth-only accounts (no password to reset) are silent no-ops.
+        """
+        user = await self._lookup(identifier)
+        if user is None or user.password_hash is None:
+            return None
+        raw = mint_reset_token()
+        await self._repo.invalidate_user_reset_tokens(user.user_id)  # keep only the latest live
+        await self._repo.insert_password_reset_token(
+            PasswordResetTokenRow(
+                token_id=uuid.uuid4(),
+                user_id=user.user_id,
+                token_hash=hash_reset_token(raw),
+                expires_at=datetime.now(UTC)
+                + timedelta(seconds=self._settings.password_reset_token_ttl_seconds),
+            )
+        )
+        # NEVER put the token/secret in the event payload (publisher.py invariant).
+        await self._repo.add_event(
+            "user", user.user_id, events.PASSWORD_RESET_REQUESTED, {"user_id": str(user.user_id)}
+        )
+        await self._commit()
+        await self._publisher.publish(
+            events.PASSWORD_RESET_REQUESTED, {"user_id": str(user.user_id)}
+        )
+        return raw if self._settings.password_reset_dev_return_token else None
+
+    async def confirm_password_reset(self, *, token: str, new_password: str) -> None:
+        """Complete a reset: set the new password, single-use the token, and revoke ALL sessions."""
+        row = await self._repo.get_password_reset_by_hash(hash_reset_token(token))
+        now = datetime.now(UTC)
+        if row is None or row.used_at is not None or _aware(row.expires_at) <= now:
+            raise AppError(ErrorCode.INVALID_TOKEN, "invalid or expired reset token")
+        user = await self._repo.get_user(row.user_id)
+        if user is None or user.status != UserStatus.ACTIVE:
+            raise AppError(ErrorCode.INVALID_TOKEN, "invalid reset token")
+        user.password_hash = self._passwords.hash(new_password)
+        row.used_at = now  # single-use
+        await self._sessions.revoke_all(user.user_id)  # password changed → kill every session
+        await self._repo.add_event(
+            "user", user.user_id, events.PASSWORD_RESET_SUCCEEDED, {"user_id": str(user.user_id)}
+        )
+        await self._commit()
+        await self._publisher.publish(
+            events.PASSWORD_RESET_SUCCEEDED, {"user_id": str(user.user_id)}
+        )
 
     def oauth_start(
         self, provider: str, *, state: str | None, redirect_uri: str | None

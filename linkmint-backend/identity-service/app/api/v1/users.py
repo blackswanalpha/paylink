@@ -18,7 +18,7 @@ router = APIRouter(prefix="/v1/users", tags=["users"])
 
 
 def _profile(
-    user: UserRow, roles: list[tuple[str, str]], user_roles: list[str]
+    user: UserRow, roles: list[tuple[str, str]], user_roles: list[str], mfa_enabled: bool
 ) -> schemas.UserProfileResponse:
     return schemas.UserProfileResponse(
         user_id=str(user.user_id),
@@ -26,6 +26,7 @@ def _profile(
         phone=user.phone,
         kyc_tier=user.kyc_tier,
         status=user.status,
+        mfa_enabled=mfa_enabled,
         roles=[schemas.OrgRoleEntry(org_id=o, role=r) for o, r in roles],
         user_roles=user_roles,
         created_at=user.created_at,
@@ -51,7 +52,8 @@ async def get_me(services: ServicesDep, principal: PrincipalDep) -> schemas.User
     uid = uuid.UUID(principal.user_id)
     user = await services.users.get(uid)
     roles = await services.users.roles(uid)
-    return _profile(user, roles, principal.user_roles)
+    mfa_enabled = await services.mfa.is_required(uid)
+    return _profile(user, roles, principal.user_roles, mfa_enabled)
 
 
 @router.patch("/me")
@@ -67,7 +69,8 @@ async def update_me(
     async def work() -> dict[str, Any]:
         user = await services.users.update(uid, email=req.email, phone=req.phone)
         roles = await services.users.roles(uid)
-        return _profile(user, roles, principal.user_roles).model_dump(mode="json")
+        mfa_enabled = await services.mfa.is_required(uid)
+        return _profile(user, roles, principal.user_roles, mfa_enabled).model_dump(mode="json")
 
     return await idempotent(
         idem,

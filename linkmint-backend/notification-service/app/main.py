@@ -23,6 +23,7 @@ from sqlalchemy import text
 
 from app.api.v1.inbox import router as inbox_router
 from app.api.v1.internal import router as internal_router
+from app.api.v1.preferences import router as preferences_router
 from app.config import Settings, get_settings
 from app.db.session import make_engine, make_sessionmaker
 from app.errors import install_error_handlers
@@ -130,6 +131,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_handlers(app)
     app.include_router(internal_router)
     app.include_router(inbox_router)
+    app.include_router(preferences_router)
 
     @app.get("/internal/healthz")
     async def healthz() -> dict[str, str]:

@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LinkMint — Pitch Deck</title>
+<link rel="stylesheet" href="fonts/fonts.css" />
+<style>
+  /* ============================================================
+     LinkMint — "Ivory Premium" pitch deck
+     Tokens mirror linkmint-frontend/src/theme/system.ts verbatim.
+     ============================================================ */
+  :root{
+    --canvas:#FAF7F0; --surface:#FFFFFF; --surface-subtle:#F4F0E7; --hairline:#E7E1D5;
+    --ink:#1C1A17; --ink-muted:#6B655C;
+    --em-50:#E9F3EC; --em-100:#CBE3D3; --em-200:#A3CEB2; --em-300:#72B690;
+    --em-400:#3E9A6C; --em-500:#1A8055; --em-600:#0F6E4E; --em-700:#0B5840;
+    --em-800:#084231; --em-900:#052D22;
+    --gold-50:#FBF6E9; --gold-100:#F3E7C4; --gold-200:#E6CF8F; --gold-300:#D8B65C;
+    --gold-400:#C8A24B; --gold-500:#B08C37; --gold-600:#8E6F2A;
+    --pending:#B8860B; --danger:#B4452F; --expired:#8A7E6A;
+    --display:'Fraunces',Georgia,serif; --body:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+  html,body{margin:0;padding:0;background:#cfc9bd;font-family:var(--body);color:var(--ink);}
+
+  .slide{
+    width:1280px;height:720px;position:relative;overflow:hidden;background:var(--canvas);
+    padding:60px 76px 64px;display:flex;flex-direction:column;
+  }
+  @page{ size:1280px 720px; margin:0; }
+  @media screen{ .slide{margin:24px auto;box-shadow:0 20px 48px rgba(28,26,23,.28);} }
+  @media print{
+    html,body{background:var(--canvas);}
+    .slide{break-after:page;page-break-after:always;break-inside:avoid;margin:0;box-shadow:none;}
+    .slide:last-child{break-after:auto;page-break-after:auto;}
+  }
+
+  /* ---- type ---- */
+  .kicker{font:600 14px/1 var(--body);letter-spacing:.18em;text-transform:uppercase;color:var(--em-600);}
+  h1.title{font:600 46px/1.06 var(--display);letter-spacing:-.01em;margin:14px 0 0;color:var(--ink);max-width:1000px;}
+  h1.title.sm{font-size:38px;}
+  .lead{font:400 21px/1.5 var(--body);color:var(--ink-muted);margin:18px 0 0;max-width:880px;}
+  .display-xl{font:600 var(--display);}
+  .mono{font-family:var(--mono);}
+  .em{color:var(--em-600);} .gold{color:var(--gold-500);} .muted{color:var(--ink-muted);}
+
+  /* ---- footer / mark ---- */
+  .foot{position:absolute;left:76px;right:76px;bottom:26px;display:flex;justify-content:space-between;align-items:center;
+        font:500 12.5px/1 var(--body);color:var(--ink-muted);letter-spacing:.02em;border-top:1px solid var(--hairline);padding-top:14px;}
+  .foot .mark{display:inline-flex;align-items:center;gap:7px;font-weight:600;color:var(--ink);}
+  .dia{width:13px;height:13px;display:inline-block;}
+  .dia path{fill:var(--em-600);}
+
+  /* ---- generic layout ---- */
+  .body{flex:1;display:flex;flex-direction:column;justify-content:center;}
+  .row{display:flex;gap:22px;}
+  .col{flex:1;}
+  .card{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:24px 26px;box-shadow:0 2px 8px rgba(28,26,23,.05);}
+  .card h3{font:600 19px/1.3 var(--display);margin:0 0 6px;}
+  .card p{font:400 15.5px/1.5 var(--body);color:var(--ink-muted);margin:0;}
+  .pill{display:inline-flex;align-items:center;gap:6px;font:600 12.5px/1 var(--body);letter-spacing:.04em;padding:6px 11px;border-radius:999px;}
+  .pill.neutral{background:var(--surface-subtle);color:var(--ink-muted);}
+  .pill.em{background:var(--em-50);color:var(--em-700);}
+  .pill.gold{background:var(--gold-50);color:var(--gold-600);}
+  .pill.pend{background:#FBF1D6;color:var(--pending);}
+  .ic{width:22px;height:22px;stroke:var(--em-600);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .ic.ink{stroke:var(--ink);}
+
+  /* cover */
+  .cover{align-items:center;justify-content:center;text-align:center;}
+  .cover .wm{font:600 96px/1 var(--display);letter-spacing:-.02em;display:flex;align-items:center;gap:22px;}
+  .cover .wm .dia{width:52px;height:52px;}
+  .cover .tag{font:400 28px/1.4 var(--display);color:var(--ink);margin-top:26px;max-width:780px;}
+  .cover .sub{font:400 18px/1.5 var(--body);color:var(--ink-muted);margin-top:14px;}
+  .cover .meta{position:absolute;bottom:54px;left:76px;right:76px;display:flex;justify-content:space-between;font:500 14px/1 var(--body);color:var(--ink-muted);}
+
+  /* problem friction rows */
+  .fric{display:flex;gap:20px;align-items:flex-start;padding:20px 0;border-bottom:1px solid var(--hairline);}
+  .fric:last-child{border-bottom:none;}
+  .fric .glyph{width:46px;height:46px;border-radius:12px;background:var(--surface);border:1px solid var(--hairline);display:flex;align-items:center;justify-content:center;flex:none;}
+  .fric h3{font:600 20px/1.2 var(--display);margin:2px 0 4px;}
+  .fric p{font:400 16px/1.5 var(--body);color:var(--ink-muted);margin:0;max-width:680px;}
+  .statbox{flex:none;width:300px;background:var(--ink);color:#fff;border-radius:16px;padding:28px;display:flex;flex-direction:column;justify-content:center;}
+  .statbox .n{font:600 64px/1 var(--display);letter-spacing:-.02em;color:#fff;}
+  .statbox .n .small{font-size:34px;color:var(--gold-300);}
+  .statbox p{font:400 15px/1.5 var(--body);color:#cfc9bd;margin:12px 0 0;}
+
+  /* flow diagram */
+  .flow{display:flex;align-items:stretch;gap:0;margin-top:8px;}
+  .node{flex:1;background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:20px 18px;position:relative;box-shadow:0 2px 8px rgba(28,26,23,.05);}
+  .node .step{font:600 12px/1 var(--body);letter-spacing:.1em;color:var(--em-600);text-transform:uppercase;}
+  .node h3{font:600 18px/1.25 var(--display);margin:9px 0 6px;}
+  .node p{font:400 13.5px/1.45 var(--body);color:var(--ink-muted);margin:0;}
+  .conn{width:46px;display:flex;align-items:center;justify-content:center;flex:none;}
+  .conn svg{width:30px;height:18px;}
+
+  /* device mock (slide 5) */
+  .devs{display:flex;gap:26px;justify-content:center;align-items:stretch;margin-top:6px;}
+  .dev{flex:1;max-width:330px;background:var(--surface);border:1px solid var(--hairline);border-radius:20px;padding:18px 18px 20px;box-shadow:0 12px 28px rgba(28,26,23,.10);display:flex;flex-direction:column;}
+  .dev.win{border-color:var(--gold-200);box-shadow:0 12px 30px rgba(200,162,75,.20);}
+  .dev .brand{display:flex;align-items:center;gap:7px;font:600 15px/1 var(--display);}
+  .dev .brand .dia{width:14px;height:14px;}
+  .steps{display:flex;gap:6px;margin:13px 0 14px;}
+  .steps .s{flex:1;height:4px;border-radius:2px;background:var(--hairline);}
+  .steps .s.on{background:var(--em-600);} .steps .s.done{background:var(--em-300);}
+  .field{background:var(--surface-subtle);border:1px solid var(--hairline);border-radius:9px;padding:9px 11px;margin-bottom:9px;}
+  .field .l{font:500 10.5px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-muted);}
+  .field .v{font:500 14px/1.3 var(--body);margin-top:4px;} .field .v.mono{font-family:var(--mono);font-size:12.5px;}
+  .btn{background:var(--em-600);color:#fff;font:600 14px/1 var(--body);text-align:center;padding:12px;border-radius:10px;margin-top:4px;}
+  .amount-big{font:600 34px/1 var(--display);margin:6px 0 2px;}
+  .check{width:54px;height:54px;border-radius:50%;background:var(--gold-50);border:2px solid var(--gold-400);display:flex;align-items:center;justify-content:center;margin:6px auto 10px;}
+  .check svg{width:28px;height:28px;stroke:var(--gold-500);stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .dev .cap{font:500 12.5px/1.3 var(--body);color:var(--ink-muted);text-align:center;margin-top:12px;}
+  .dev .cap b{color:var(--ink);font-weight:600;}
+
+  /* live demo (slide 5) — flow list + real screenshot */
+  .demostep{display:flex;gap:14px;align-items:flex-start;padding:15px 0;border-bottom:1px solid var(--hairline);}
+  .demostep:last-of-type{border-bottom:none;}
+  .demostep .num{width:30px;height:30px;border-radius:50%;background:var(--em-600);color:#fff;font:600 14px/1 var(--body);display:flex;align-items:center;justify-content:center;flex:none;}
+  .demostep .num.gold{background:var(--gold-500);}
+  .demostep h4{font:600 17px/1.2 var(--display);margin:0 0 3px;}
+  .demostep p{font:400 13.5px/1.45 var(--body);color:var(--ink-muted);margin:0;}
+  .shot{border:1px solid var(--hairline);border-radius:14px;overflow:hidden;box-shadow:0 16px 36px rgba(28,26,23,.13);background:#fff;}
+  .shotbar{height:30px;background:var(--surface-subtle);border-bottom:1px solid var(--hairline);display:flex;align-items:center;gap:7px;padding:0 13px;}
+  .shotbar .d{width:9px;height:9px;border-radius:50%;background:#d8d2c5;}
+  .shotbar .u{font:500 11px/1 var(--mono);color:var(--ink-muted);margin-left:10px;}
+  .shot img{display:block;width:100%;}
+  .shotcap{font:500 12.5px/1.5 var(--body);color:var(--ink-muted);margin-top:11px;}
+  .realtag{display:inline-flex;align-items:center;gap:6px;font:600 11px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--em-700);background:var(--em-50);border:1px solid var(--em-200);border-radius:999px;padding:5px 10px;margin-bottom:10px;}
+
+  /* big stat strip (slide 6) */
+  .stats{display:flex;gap:18px;margin-bottom:18px;}
+  .stat{flex:1;background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:18px 20px;}
+  .stat .n{font:600 46px/1 var(--display);letter-spacing:-.02em;color:var(--em-600);}
+  .stat .n.gold{color:var(--gold-500);}
+  .stat .l{font:500 13.5px/1.35 var(--body);color:var(--ink-muted);margin-top:7px;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{font:500 12.5px/1 var(--body);padding:7px 12px;border-radius:8px;border:1px solid var(--hairline);background:var(--surface);color:var(--ink);}
+  .chip.go{border-color:var(--em-200);background:var(--em-50);color:var(--em-700);}
+  .chip.py{border-color:var(--hairline);background:var(--surface-subtle);color:var(--ink);}
+  .chip.infra{border-style:dashed;color:var(--ink-muted);}
+
+  /* architecture (slide 7) */
+  .arch{display:flex;gap:18px;}
+  .arch .stack{flex:1;display:flex;flex-direction:column;gap:11px;}
+  .layer{border:1px solid var(--hairline);border-radius:12px;padding:13px 16px;background:var(--surface);}
+  .layer .lt{font:600 12px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-muted);}
+  .layer .lr{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px;}
+  .layer.em-l{background:var(--em-600);border-color:var(--em-600);}
+  .layer.em-l .lt{color:var(--em-100);} .layer.em-l .lr .mini{background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.22);}
+  .mini{font:500 12px/1 var(--body);padding:6px 10px;border-radius:7px;border:1px solid var(--hairline);background:var(--surface-subtle);color:var(--ink);}
+  .mini.live{background:var(--em-50);border-color:var(--em-200);color:var(--em-700);}
+  .mini.next{border-style:dashed;color:var(--ink-muted);}
+  .sidebar{width:212px;flex:none;background:var(--ink);border-radius:14px;padding:18px;color:#fff;display:flex;flex-direction:column;justify-content:center;}
+  .sidebar .lt{font:600 12px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--gold-300);}
+  .sidebar ul{margin:12px 0 0;padding:0;list-style:none;}
+  .sidebar li{font:500 14px/1 var(--body);color:#eee;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.12);}
+  .sidebar li:last-child{border-bottom:none;}
+
+  /* market rings (slide 8) */
+  .rings{display:flex;align-items:center;gap:14px;}
+  .ring{border-radius:999px;display:flex;align-items:center;justify-content:flex-start;padding-left:22px;font:600 15px/1 var(--display);color:#fff;height:118px;}
+  .ring.r1{width:230px;background:var(--em-600);}
+  .ring.r2{width:200px;background:var(--em-400);}
+  .ring.r3{width:175px;background:var(--em-300);color:var(--ink);}
+  .ring.r4{width:150px;background:var(--surface-subtle);color:var(--ink-muted);border:1px dashed var(--hairline);}
+  .persona{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;}
+
+  /* business model (slide 9) */
+  .versus{display:flex;align-items:flex-end;gap:30px;}
+  .versus .ours{font:600 132px/.85 var(--display);letter-spacing:-.03em;color:var(--em-600);}
+  .versus .theirs{font:600 64px/.9 var(--display);color:var(--ink-muted);text-decoration:line-through;text-decoration-color:var(--danger);text-decoration-thickness:4px;}
+  .versus .vl{font:500 15px/1.4 var(--body);color:var(--ink-muted);margin-top:8px;}
+  .splitbar{display:flex;height:42px;border-radius:10px;overflow:hidden;border:1px solid var(--hairline);}
+  .splitbar div{display:flex;align-items:center;justify-content:center;font:600 13px/1 var(--body);color:#fff;}
+
+  /* matrix (slide 10) */
+  table.mx{width:100%;border-collapse:separate;border-spacing:0;margin-top:6px;}
+  table.mx th,table.mx td{padding:11px 12px;text-align:center;font:500 14px/1.25 var(--body);border-bottom:1px solid var(--hairline);}
+  table.mx th{font-weight:600;font-size:13px;color:var(--ink-muted);}
+  table.mx td:first-child,table.mx th:first-child{text-align:left;font-weight:600;color:var(--ink);width:255px;}
+  table.mx .own{background:var(--em-50);}
+  table.mx th.own{color:var(--em-700);border-radius:9px 9px 0 0;}
+  .tick{color:var(--em-600);font-weight:700;} .cross{color:var(--danger);} .part{color:var(--pending);}
+  table.mx td.own{font-weight:600;color:var(--em-700);}
+
+  /* impact & ROI grid */
+  .impact{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:6px;}
+  .icard{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:17px 20px;display:flex;gap:14px;box-shadow:0 2px 8px rgba(28,26,23,.05);}
+  .icard .ic{flex:none;margin-top:2px;}
+  .icard h3{font:600 17px/1.2 var(--display);margin:0 0 7px;}
+  .icard ul{margin:0;padding-left:16px;}
+  .icard li{font:400 13px/1.5 var(--body);color:var(--ink-muted);margin-bottom:3px;}
+  .icard li b{color:var(--ink);font-weight:600;}
+  .icard.feature{background:var(--em-600);border-color:var(--em-600);}
+  .icard.feature h3{color:#fff;} .icard.feature li{color:#d7e7dd;} .icard.feature li b{color:#fff;}
+  .icard.feature .ic{stroke:var(--gold-300);}
+
+  /* vertical expansion grid */
+  .verts{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:6px;}
+  .vcard{background:var(--surface);border:1px solid var(--hairline);border-radius:13px;padding:15px 17px;box-shadow:0 2px 8px rgba(28,26,23,.05);display:flex;flex-direction:column;}
+  .vcard .vh{display:flex;align-items:center;gap:10px;margin-bottom:9px;}
+  .vcard .vh h3{font:600 15.5px/1.15 var(--display);margin:0;}
+  .vcard .vh .ic{width:19px;height:19px;flex:none;}
+  .vcard .when{font:600 9.5px/1 var(--body);letter-spacing:.07em;text-transform:uppercase;padding:4px 8px;border-radius:999px;align-self:flex-start;margin-bottom:11px;}
+  .vcard .when.live{background:var(--em-50);color:var(--em-700);border:1px solid var(--em-200);}
+  .vcard .when.next{background:var(--surfaceSubtle, #F4F0E7);color:var(--gold-600);border:1px dashed var(--gold-300);}
+  .vcard .ex{display:flex;flex-wrap:wrap;gap:6px;}
+  .vcard .ex span{font:500 11px/1.1 var(--body);padding:5px 9px;border-radius:7px;background:var(--surface-subtle);color:var(--ink);border:1px solid var(--hairline);}
+
+  /* compliance (slide 11) */
+  .clist{list-style:none;margin:6px 0 0;padding:0;}
+  .clist li{display:flex;gap:13px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--hairline);}
+  .clist li:last-child{border-bottom:none;}
+  .clist .ic{flex:none;margin-top:1px;}
+  .clist h4{font:600 16px/1.3 var(--display);margin:0 0 2px;}
+  .clist p{font:400 14px/1.45 var(--body);color:var(--ink-muted);margin:0;}
+
+  /* roadmap (slide 12) */
+  .timeline{display:flex;gap:18px;margin-top:8px;}
+  .phase{flex:1;border:1px solid var(--hairline);border-radius:14px;padding:20px;background:var(--surface);}
+  .phase.done{border-color:var(--em-600);background:var(--em-50);}
+  .phase .ph{font:600 13px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted);display:flex;justify-content:space-between;}
+  .phase.done .ph{color:var(--em-700);}
+  .phase h3{font:600 19px/1.2 var(--display);margin:11px 0 10px;}
+  .phase ul{margin:0;padding-left:18px;} .phase li{font:400 14px/1.7 var(--body);color:var(--ink-muted);}
+
+  /* team (slide 13) */
+  .founder{display:flex;gap:22px;align-items:center;background:var(--surface);border:1px solid var(--hairline);border-radius:16px;padding:26px;box-shadow:0 2px 8px rgba(28,26,23,.05);}
+  .avatar{width:96px;height:96px;border-radius:50%;background:var(--em-600);color:#fff;display:flex;align-items:center;justify-content:center;font:600 36px/1 var(--display);flex:none;}
+  .founder h3{font:600 24px/1.2 var(--display);margin:0;}
+  .founder .role{font:600 14px/1 var(--body);color:var(--em-600);letter-spacing:.04em;text-transform:uppercase;margin:7px 0 9px;}
+  .founder p{font:400 15.5px/1.5 var(--body);color:var(--ink-muted);margin:0;max-width:620px;}
+  .roles{display:flex;gap:13px;margin-top:18px;}
+  .role-card{flex:1;border:1px dashed var(--hairline);border-radius:12px;padding:15px;background:var(--surface);}
+  .role-card .h{font:600 12px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--gold-600);}
+  .role-card h4{font:600 16px/1.25 var(--display);margin:9px 0 0;}
+
+  /* ask (slide 14) */
+  .ask{display:flex;gap:14px;margin-top:4px;}
+  .ask .a{flex:1;background:var(--surface);border:1px solid var(--hairline);border-radius:13px;padding:18px;}
+  .ask .a .ic{margin-bottom:10px;}
+  .ask .a h4{font:600 16px/1.25 var(--display);margin:0 0 5px;}
+  .ask .a p{font:400 13px/1.4 var(--body);color:var(--ink-muted);margin:0;}
+  .contact{display:flex;align-items:center;gap:22px;margin-top:22px;background:var(--ink);border-radius:16px;padding:22px 26px;color:#fff;}
+  .qr{width:96px;height:96px;border-radius:10px;background:#fff;padding:8px;flex:none;}
+  .contact h3{font:600 22px/1.25 var(--display);margin:0;color:#fff;}
+  .contact p{font:400 14.5px/1.6 var(--body);color:#cfc9bd;margin:6px 0 0;}
+  .contact .mono{color:var(--gold-300);}
+</style>
+</head>
+<body>
+
+<!-- ============ 1 · COVER ============ -->
+<section class="slide cover">
+  <div class="wm"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</div>
+  <div class="tag">Pay anyone, anywhere, through any rail — with a link.</div>
+  <div class="sub">Non-custodial · multi-rail · blockchain-settled payments for East Africa.</div>
+  <div class="meta">
+    <span>Victor Mbugua Kamande · Founder &amp; CEO</span>
+    <span>Phase 2 · Innovator Showcase · Rupa Mall, Eldoret</span>
+    <span>June 2026</span>
+  </div>
+</section>
+
+<!-- ============ 2 · PROBLEM ============ -->
+<section class="slide">
+  <div class="kicker">The problem</div>
+  <h1 class="title sm">Accepting digital payments in Africa is custodial, single-rail, and hostile to small payments.</h1>
+  <div class="body">
+    <div class="row" style="align-items:stretch;">
+      <div class="col">
+        <div class="fric">
+          <div class="glyph"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+          <div><h3>Custodial by default</h3><p>Holding customer funds means a PSP / e-money licence, locked-up capital, and Central Bank approval before you can take a single shilling.</p></div>
+        </div>
+        <div class="fric">
+          <div class="glyph"><svg class="ic" viewBox="0 0 24 24"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9c0 7-12 5-12 9"/></svg></div>
+          <div><h3>Single-rail, every time</h3><p>M-Pesa <i>or</i> a card <i>or</i> a bank transfer — never one link a customer can simply open and pay, on whatever rail they already use.</p></div>
+        </div>
+        <div class="fric">
+          <div class="glyph"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h4a2 2 0 0 1 0 4h-4"/></svg></div>
+          <div><h3>Micropayment-hostile</h3><p>Fixed processing fees make a tip, a song, or a single article simply not worth collecting — so a whole economy never gets built.</p></div>
+        </div>
+      </div>
+      <div class="statbox">
+        <div class="n">1&ndash;3<span class="small">%</span></div>
+        <p>Card interchange &amp; processing fees — the wrong cost model for a KES&nbsp;20 payment, before you even add a fixed per-transaction floor.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>02</span></div>
+</section>
+
+<!-- ============ 3 · SOLUTION ============ -->
+<section class="slide">
+  <div class="kicker">The solution</div>
+  <h1 class="title">A PayLink. Scan or click to pay — money goes straight to the receiver.</h1>
+  <p class="lead">LinkMint never touches the funds. We verify a cryptographic <b>proof of payment</b> and finalise settlement on our own blockchain — the lVM.</p>
+  <div class="body">
+    <div class="row">
+      <div class="col"><div class="card"><h3>① The PayLink</h3><p>A shareable payment authorisation — a URL, a QR code, or an NFT. No payer account. No app to download.</p></div></div>
+      <div class="col"><div class="card"><h3>② Non-custodial protocol</h3><p>Funds flow rail → receiver directly. Because we never hold money, we sidestep PSP / e-money licensing entirely.</p></div></div>
+      <div class="col"><div class="card"><h3>③ Programmable logic</h3><p>One-time or multi-use, expiry, escrow conditions, and split payments — all enforced on-chain.</p></div></div>
+    </div>
+    <div style="margin-top:20px;display:flex;align-items:center;gap:13px;background:var(--em-50);border:1px solid var(--em-200);border-radius:12px;padding:15px 20px;">
+      <svg class="ic" viewBox="0 0 24 24" style="stroke:var(--em-700)"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+      <span style="font:600 17px/1.4 var(--display);color:var(--em-800)">The money never touches LinkMint — we only move proofs, not funds.</span>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>03</span></div>
+</section>
+
+<!-- ============ 4 · HOW IT WORKS ============ -->
+<section class="slide">
+  <div class="kicker">How it works</div>
+  <h1 class="title">Create → Pay → Settle</h1>
+  <div class="body">
+    <div class="flow">
+      <div class="node"><div class="step">1 · Create</div><h3>Mint a PayLink</h3><p>Merchant creates a PayLink (URL / QR / NFT). It is minted on the lVM chain.</p><span class="pill neutral" style="margin-top:12px">status: CREATED</span></div>
+      <div class="conn"><svg viewBox="0 0 30 18"><path d="M0 9h24M19 4l6 5-6 5" fill="none" stroke="#0F6E4E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="node"><div class="step">2 · Pay</div><h3>Payer pays</h3><p>An M-Pesa STK push lands on the payer's phone. They confirm with their PIN.</p><span class="pill pend" style="margin-top:12px">M-PESA · STK push</span></div>
+      <div class="conn"><svg viewBox="0 0 30 18"><path d="M0 9h24M19 4l6 5-6 5" fill="none" stroke="#0F6E4E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="node"><div class="step">3 · Prove</div><h3>Adapter signs a proof</h3><p>The rail callback is normalised into a signed, rail-agnostic proof of payment.</p><span class="pill em" style="margin-top:12px">proof signed</span></div>
+      <div class="conn"><svg viewBox="0 0 30 18"><path d="M0 9h24M19 4l6 5-6 5" fill="none" stroke="#0F6E4E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="node"><div class="step">4 · Settle</div><h3>lVM verifies</h3><p>A validator checks the proof and finalises the PayLink on-chain.</p><span class="pill em" style="margin-top:12px">status: VERIFIED ✓</span></div>
+    </div>
+    <div style="margin-top:24px;display:flex;gap:16px;align-items:center;">
+      <div class="card mono" style="flex:1;background:var(--ink);color:#cfc9bd;border:none;font-size:13px;padding:16px 20px;">
+        <span style="color:var(--gold-300)">proof_hash</span> = SHA256( pl_id · receipt · amount )
+        &nbsp;→&nbsp; <span style="color:var(--em-300)">verified once</span>, replay rejected
+      </div>
+      <div style="font:600 16px/1.45 var(--display);color:var(--ink);max-width:360px;">LinkMint verifies cryptographic proofs — it never holds the money.</div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>04</span></div>
+</section>
+
+<!-- ============ 5 · LIVE DEMO ============ -->
+<section class="slide">
+  <div class="kicker">Live demo · running today</div>
+  <h1 class="title sm">Create → Pay → Settle, in about ten seconds — on our own chain.</h1>
+  <div class="body">
+    <div class="row" style="gap:36px;align-items:stretch;">
+      <div style="flex:0 0 45%;display:flex;flex-direction:column;">
+        <div class="demostep"><div class="num">1</div><div><h4>Create a PayLink</h4><p>Set receiver, amount and expiry. It's minted on the lVM chain — funds never touch the app.</p></div></div>
+        <div class="demostep"><div class="num">2</div><div><h4>Pay via M-PESA</h4><p>An STK push to Pay Bill 174379. The payer confirms in their own M-Pesa app — no account, no install.</p></div></div>
+        <div class="demostep"><div class="num gold">3</div><div><h4>Settled on-chain</h4><p>The signed proof is verified by a validator and the PayLink turns VERIFIED — in seconds.</p></div></div>
+        <div class="mono" style="margin-top:auto;background:var(--ink);color:#cfc9bd;border-radius:9px;padding:11px 15px;font-size:11.5px;line-height:1.5;">
+          <span style="color:var(--em-300)">$ make -C adapters/mpesa e2e</span><br>CREATED → VERIFIED · proof used ✓ · <span style="color:var(--gold-300)">PASS (2.4s)</span>
+        </div>
+      </div>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="realtag"><svg width="11" height="11" viewBox="0 0 24 24" style="stroke:var(--em-700);stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>Actual screen · captured live</span>
+        <div class="shot" style="max-width:540px;">
+          <div class="shotbar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="u">localhost:3000 — LinkMint</span></div>
+          <img src="assets/03-settled-crop.png" alt="Real settlement screen showing VERIFIED status and on-chain transaction hash" />
+        </div>
+        <div class="shotcap" style="max-width:540px;">A real PayLink <span class="mono">0x2e62…a9d4</span>, <b style="color:var(--em-700)">VERIFIED on-chain</b> with a verifiable tx hash <span class="mono">0x741c…b85ae8</span> — not a mock-up.</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>05</span></div>
+</section>
+
+<!-- ============ 6 · TRACTION ============ -->
+<section class="slide">
+  <div class="kicker">Traction · this is not a prototype</div>
+  <h1 class="title sm">The whole system runs end-to-end, today.</h1>
+  <div class="body">
+    <div class="stats">
+      <div class="stat"><div class="n">12</div><div class="l">production-shaped microservices</div></div>
+      <div class="stat"><div class="n">1</div><div class="l">custom blockchain — the lVM (Go · NIST&nbsp;P-256)</div></div>
+      <div class="stat"><div class="n gold">PASS</div><div class="l">end-to-end M-Pesa settlement test, green in CI</div></div>
+      <div class="stat"><div class="n">80<span style="font-size:28px">%</span></div><div class="l">enforced test-coverage gate</div></div>
+    </div>
+    <div class="row" style="gap:18px;">
+      <div class="col card" style="padding:18px 20px;">
+        <div style="font:600 13px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:11px;">Shipped &amp; running</div>
+        <div class="chips">
+          <span class="chip go">paylink-service</span><span class="chip go">payment-orchestrator</span><span class="chip go">proof-validator</span>
+          <span class="chip py">identity</span><span class="chip py">merchant-onboarding</span><span class="chip py">compliance-risk</span>
+          <span class="chip py">admin-backoffice</span><span class="chip go">audit-log</span><span class="chip py">notifications</span>
+          <span class="chip py">invoicing</span><span class="chip infra">Kong gateway</span><span class="chip go">lVM chain</span>
+          <span class="chip go">M-Pesa adapter</span><span class="chip infra">JS SDK</span><span class="chip infra">Next.js web app</span>
+        </div>
+      </div>
+      <div class="col card" style="padding:18px 20px;">
+        <div style="font:600 13px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:11px;">Production-grade by construction</div>
+        <div class="chips">
+          <span class="chip">Idempotency keys</span><span class="chip">Event sourcing (Kafka/Redpanda)</span>
+          <span class="chip">Tamper-evident audit hash-chain</span><span class="chip">Append-only double-entry ledger</span>
+          <span class="chip">MFA</span><span class="chip">AES-GCM encryption at rest</span><span class="chip">OpenTelemetry tracing</span>
+          <span class="chip">Architecture Decision Records</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>06</span></div>
+</section>
+
+<!-- ============ 7 · ARCHITECTURE ============ -->
+<section class="slide">
+  <div class="kicker">Architecture</div>
+  <h1 class="title sm">Layered, rail-agnostic, blockchain-settled.</h1>
+  <div class="body">
+    <div class="arch">
+      <div class="stack">
+        <div class="layer"><div class="lt">Clients</div><div class="lr"><span class="mini">Next.js web app</span><span class="mini">@linkmint/sdk (TypeScript)</span><span class="mini">QR · link · NFT</span></div></div>
+        <div class="layer"><div class="lt">Edge</div><div class="lr"><span class="mini">API Gateway · Kong</span><span class="mini">JWT &amp; API-key auth</span><span class="mini">rate-limit</span><span class="mini">signed X-Creator-Addr</span></div></div>
+        <div class="layer"><div class="lt">Core services</div><div class="lr"><span class="mini">paylink</span><span class="mini">payment-orchestrator</span><span class="mini">proof-validator</span><span class="mini">identity</span><span class="mini">merchant-onboarding</span><span class="mini">compliance-risk</span><span class="mini">admin</span><span class="mini">audit-log</span><span class="mini">notifications</span><span class="mini">invoicing</span></div></div>
+        <div class="layer"><div class="lt">Rail adapters</div><div class="lr"><span class="mini live">M-Pesa · live</span><span class="mini next">Card · next</span><span class="mini next">Bank · next</span><span class="mini next">Crypto (USDC) · next</span></div></div>
+        <div class="layer em-l"><div class="lt">Settlement layer</div><div class="lr"><span class="mini">lVM blockchain · Go</span><span class="mini">NIST P-256 ECDSA</span><span class="mini">single-validator devnet</span><span class="mini">BFT / multi-validator ready</span></div></div>
+      </div>
+      <div class="sidebar">
+        <div class="lt">Shared backbone</div>
+        <ul><li>Event bus</li><li>Double-entry ledger</li><li>Idempotency store</li><li>Telemetry (OTel)</li></ul>
+        <div style="font:400 12px/1.5 var(--body);color:#bdb6a8;margin-top:14px;">Identical Go + Python client libraries — every service speaks the same wire.</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>07</span></div>
+</section>
+
+<!-- ============ 8 · MARKET ============ -->
+<section class="slide">
+  <div class="kicker">Market</div>
+  <h1 class="title sm">Start where mobile money already won — then expand the rails.</h1>
+  <div class="body">
+    <div class="row" style="align-items:center;gap:36px;">
+      <div style="flex:none;">
+        <div class="rings">
+          <div class="ring r1">Kenya<br>M-Pesa</div>
+          <div class="ring r2">East<br>Africa</div>
+          <div class="ring r3">+ Card<br>+ Crypto</div>
+          <div class="ring r4">Global</div>
+        </div>
+      </div>
+      <div class="col">
+        <div style="background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:16px 20px;margin-bottom:16px;">
+          <div style="font:600 30px/1 var(--display);color:var(--em-600)">$800B+ / yr</div>
+          <div style="font:400 14px/1.5 var(--body);color:var(--ink-muted);margin-top:6px;">moves through mobile money across Sub-Saharan Africa — the rails our protocol plugs straight into. <span style="font-size:12px">(GSMA, State of the Industry)</span></div>
+        </div>
+        <div style="font:600 12px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:9px;">Who pays &amp; gets paid</div>
+        <div class="persona">
+          <span class="chip">SMB merchants</span><span class="chip">Payers — guest, no account</span><span class="chip">Developers / ISVs</span><span class="chip">Platforms &amp; marketplaces</span>
+        </div>
+        <div style="font:600 12px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted);margin:16px 0 9px;">Where one link unlocks new revenue</div>
+        <div class="persona">
+          <span class="chip go">Micropayments &amp; tips</span><span class="chip go">Content unlocks</span><span class="chip go">Invoices &amp; subscriptions</span><span class="chip go">Escrow &amp; marketplaces</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>08</span></div>
+</section>
+
+<!-- ============ 9 · BUSINESS MODEL ============ -->
+<section class="slide">
+  <div class="kicker">Business model</div>
+  <h1 class="title sm">A take-rate built for volume — and viable for the smallest payment.</h1>
+  <div class="body">
+    <div class="row" style="align-items:center;gap:40px;">
+      <div style="flex:none;">
+        <div class="versus">
+          <div>
+            <div class="ours">0.5%</div>
+            <div class="vl"><b style="color:var(--ink)">our fee</b> per settlement · min KES&nbsp;1</div>
+          </div>
+          <div>
+            <div class="theirs">1&ndash;3%</div>
+            <div class="vl">card interchange</div>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card" style="margin-bottom:16px;">
+          <h3 style="margin-bottom:10px">How the protocol fee is split</h3>
+          <div class="splitbar">
+            <div style="width:70%;background:var(--em-600)">70% · Validators</div>
+            <div style="width:20%;background:var(--em-400)">20% · Treasury</div>
+            <div style="width:10%;background:var(--gold-500)">10% · Burn</div>
+          </div>
+          <p style="margin-top:12px">Fees reward the validators who secure the network and fund a deflationary burn. The PLN utility token aligns network security with real usage — no token speculation required to use LinkMint.</p>
+        </div>
+        <div class="row" style="gap:13px">
+          <div class="col card" style="padding:15px 18px"><div style="font:600 17px/1.3 var(--display)">KES 1,000 sale → KES 5 fee</div><p style="margin-top:4px">A normal merchant payment.</p></div>
+          <div class="col card" style="padding:15px 18px"><div style="font:600 17px/1.3 var(--display)">KES 50 tip → KES 1 fee</div><p style="margin-top:4px">Micropayments finally make sense.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>09</span></div>
+</section>
+
+<!-- ============ 10 · DIFFERENTIATION ============ -->
+<section class="slide">
+  <div class="kicker">Why LinkMint wins</div>
+  <h1 class="title sm">One link does what no incumbent does at once.</h1>
+  <div class="body">
+    <table class="mx">
+      <thead><tr>
+        <th></th><th class="own">LinkMint</th><th>Traditional PSP</th><th>Card processor</th><th>Crypto wallet</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>Non-custodial — no PSP licence</td><td class="own"><span class="tick">✓</span></td><td><span class="cross">✗</span></td><td><span class="cross">✗</span></td><td><span class="tick">✓</span></td></tr>
+        <tr><td>Multi-rail in a single link</td><td class="own"><span class="tick">✓</span></td><td><span class="part">partial</span></td><td><span class="cross">✗</span></td><td><span class="cross">✗</span></td></tr>
+        <tr><td>Micropayments viable</td><td class="own"><span class="tick">✓</span></td><td><span class="cross">✗</span></td><td><span class="cross">✗</span></td><td><span class="part">gas-limited</span></td></tr>
+        <tr><td>No payer account / app needed</td><td class="own"><span class="tick">✓</span></td><td><span class="cross">✗</span></td><td><span class="part">partial</span></td><td><span class="cross">✗</span></td></tr>
+        <tr><td>Programmable (escrow, splits, expiry)</td><td class="own"><span class="tick">✓</span></td><td><span class="cross">✗</span></td><td><span class="cross">✗</span></td><td><span class="tick">✓</span></td></tr>
+        <tr><td>Compliance built in (KYC / AML)</td><td class="own"><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="cross">✗</span></td></tr>
+        <tr><td>Fee on a KES 1,000 payment</td><td class="own">0.5%</td><td>2&ndash;3%</td><td>1&ndash;3%</td><td>+ network gas</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>10</span></div>
+</section>
+
+<!-- ============ 11 · IMPACT & ROI ============ -->
+<section class="slide">
+  <div class="kicker">Impact &amp; ROI · why it pays</div>
+  <h1 class="title sm">More revenue for merchants, real returns for investors, lift for the economy.</h1>
+  <div class="body">
+    <div class="impact">
+      <div class="icard">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg>
+        <div>
+          <h3>Merchants earn more</h3>
+          <ul>
+            <li><b>2–6× cheaper</b> than cards — 0.5% vs 1–3% keeps more of every shilling.</li>
+            <li><b>One link, every rail</b> → fewer abandoned checkouts, more completed sales.</li>
+            <li><b>New revenue lines</b>: tips, content unlocks, pay-per-use — viable only at micro-fees.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="icard">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9z"/></svg>
+        <div>
+          <h3>Easier to do business</h3>
+          <ul>
+            <li><b>Go live with a link</b> — no PSP licence, no capital lock-up, no bank integration.</li>
+            <li><b>Guest checkout</b>: customers pay with no account or app → higher conversion.</li>
+            <li><b>Escrow &amp; splits</b> automate payouts for marketplaces and gig platforms.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="icard feature">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        <div>
+          <h3>A market ripe to disrupt → investor ROI</h3>
+          <ul>
+            <li>Displaces the <b>custodial PSP + card-interchange</b> stack with a low-fee protocol.</li>
+            <li>Take-rate on the <b>$800B+/yr</b> SSA mobile-money flow → compounding, volume-based revenue.</li>
+            <li><b>Capital-light</b> — no float, no licence capital — so margins and scale follow usage.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="icard">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z"/></svg>
+        <div>
+          <h3>Scaling &amp; social impact</h3>
+          <ul>
+            <li>Brings <b>SMEs &amp; informal traders</b> formal, low-cost digital payments — financial inclusion.</li>
+            <li><b>Auditable history</b> unlocks credit access; lower fees keep money in local economies.</li>
+            <li><b>Borderless rails</b> (USDC next) → cross-border trade &amp; diaspora remittances.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>11</span></div>
+</section>
+
+<!-- ============ 12 · WHERE LINKMINT GOES NEXT ============ -->
+<section class="slide">
+  <div class="kicker">Vertical expansion</div>
+  <h1 class="title sm">Where LinkMint goes next: one protocol, many verticals.</h1>
+  <p class="lead" style="margin-top:11px">The same PayLink primitive — a link, a micro-fee, programmable and non-custodial — unlocks vertical after vertical across East Africa.</p>
+  <div class="body">
+    <div class="verts">
+      <div class="vcard">
+        <div class="vh"><svg class="ic" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg><h3>Community &amp; group money</h3></div>
+        <span class="when live">Live · M-Pesa</span>
+        <div class="ex"><span>Chamas</span><span>SACCOs</span><span>Harambee</span><span>Churches &amp; NGOs</span></div>
+      </div>
+      <div class="vcard">
+        <div class="vh"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h4a2 2 0 0 1 0 4h-4"/></svg><h3>Micro &amp; metered commerce</h3></div>
+        <span class="when live">Live · M-Pesa</span>
+        <div class="ex"><span>Creator tips</span><span>PAYGo solar &amp; water</span><span>Transport fares</span><span>Ticketing (NFT)</span></div>
+      </div>
+      <div class="vcard">
+        <div class="vh"><svg class="ic" viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><h3>Recurring &amp; institutional</h3></div>
+        <span class="when live">Live · M-Pesa</span>
+        <div class="ex"><span>School fees</span><span>Subscriptions</span><span>Micro-insurance</span><span>Gov / e-citizen fees</span></div>
+      </div>
+      <div class="vcard">
+        <div class="vh"><svg class="ic" viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg><h3>Trust-based trade</h3></div>
+        <span class="when next">Phase 2 · escrow</span>
+        <div class="ex"><span>Social-commerce escrow</span><span>Marketplaces</span><span>Agri co-ops</span><span>B2B supply</span></div>
+      </div>
+      <div class="vcard">
+        <div class="vh"><svg class="ic" viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg><h3>Instant payouts &amp; gig</h3></div>
+        <span class="when next">Phase 2 · payouts</span>
+        <div class="ex"><span>Boda &amp; delivery riders</span><span>Freelancers</span><span>Refunds</span><span>Claims &amp; stipends</span></div>
+      </div>
+      <div class="vcard">
+        <div class="vh"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z"/></svg><h3>Cross-border &amp; platform</h3></div>
+        <span class="when next">Phase 3 · dev-led</span>
+        <div class="ex"><span>Diaspora remittances</span><span>Embedded "PaaS" via SDK</span><span>Alt. credit scoring</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>12</span></div>
+</section>
+
+<!-- ============ 13 · COMPLIANCE ============ -->
+<section class="slide">
+  <div class="kicker">Compliance &amp; trust</div>
+  <h1 class="title sm">Non-custodial by design — compliant by construction.</h1>
+  <div class="body">
+    <div class="row" style="gap:30px;align-items:center;">
+      <div class="col">
+        <ul class="clist">
+          <li><svg class="ic" viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg><div><h4>Sidesteps PSP / e-money licensing</h4><p>Because LinkMint never holds funds, it falls outside the Central Bank's custodial-licence regime.</p></div></li>
+          <li><svg class="ic" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg><div><h4>KYC tiers &amp; deterministic risk engine</h4><p>Tiers 0 / 1 / 2 with a Tier-1 ceiling of KES 50,000. Every check returns allow / review / block — same inputs, same decision, every time.</p></div></li>
+          <li><svg class="ic" viewBox="0 0 24 24"><path d="M12 2v20M5 5l14 14M19 5L5 19"/></svg><div><h4>Audit &amp; integrity</h4><p>Tamper-evident audit hash-chain · append-only double-entry ledger · AES-GCM at rest · multi-factor auth.</p></div></li>
+        </ul>
+      </div>
+      <div style="flex:none;width:360px;">
+        <div class="statbox" style="width:360px;">
+          <div style="font:500 13px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--gold-300)">Kenya AML threshold</div>
+          <div class="n" style="margin-top:10px">KES 150K</div>
+          <p>Cumulative-value transactions above the threshold are automatically held for enhanced review — built into the protocol, not bolted on.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>13</span></div>
+</section>
+
+<!-- ============ 14 · GTM & ROADMAP ============ -->
+<section class="slide">
+  <div class="kicker">Go-to-market &amp; roadmap</div>
+  <h1 class="title sm">Phase 1 is done. Now we scale rails and consensus.</h1>
+  <p class="lead">Developer-led adoption (SDK + docs), SMB pilots in Eldoret &amp; Nairobi, and a micropayment wedge — tips and content unlocks — that incumbents can't serve.</p>
+  <div class="body">
+    <div class="timeline">
+      <div class="phase done">
+        <div class="ph"><span>Phase 1 · Q2 2026</span><span>✓ DONE</span></div>
+        <h3>Working MVP</h3>
+        <ul><li>lVM devnet + proof settlement</li><li>M-Pesa rail, live</li><li>12 core services + JS SDK</li><li>Web app + passing e2e</li></ul>
+      </div>
+      <div class="phase">
+        <div class="ph"><span>Phase 2 · Q3 2026</span><span>NEXT</span></div>
+        <h3>Scale &amp; payouts</h3>
+        <ul><li>Card + crypto (USDC) rails</li><li>Multi-validator BFT consensus</li><li>Merchant payouts (settlement)</li><li>On-chain escrow</li></ul>
+      </div>
+      <div class="phase">
+        <div class="ph"><span>Phase 3 · Q4 2026 +</span><span>SCALE</span></div>
+        <h3>Mainnet &amp; ecosystem</h3>
+        <ul><li>Mainnet launch</li><li>Full multi-language SDK suite</li><li>Production KYC vendor</li><li>Merchant &amp; developer dashboards</li></ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>14</span></div>
+</section>
+
+<!-- ============ 15 · TEAM ============ -->
+<section class="slide">
+  <div class="kicker">Team</div>
+  <h1 class="title sm">Founder-led — hiring to scale.</h1>
+  <div class="body">
+    <div class="founder">
+      <div class="avatar">VK</div>
+      <div>
+        <h3>Victor Mbugua Kamande</h3>
+        <div class="role">Founder &amp; CEO · Protocol Engineer</div>
+        <p>Designed and built the entire LinkMint stack end-to-end — the lVM blockchain, twelve backend services, the JavaScript SDK, and the web app — with a passing end-to-end M-Pesa settlement test in CI. <span style="color:var(--ink)">[Add 1–2 lines on your background, prior work, and why you're the right person to build payments for East Africa.]</span></p>
+      </div>
+    </div>
+    <div style="font:600 12px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted);margin:22px 0 0;">Open roles we're hiring with this round</div>
+    <div class="roles">
+      <div class="role-card"><div class="h">Engineering</div><h4>Protocol Engineer (Go · lVM)</h4></div>
+      <div class="role-card"><div class="h">Engineering</div><h4>Backend Engineer (services)</h4></div>
+      <div class="role-card"><div class="h">Risk</div><h4>Compliance &amp; Risk Lead</h4></div>
+      <div class="role-card"><div class="h">Commercial</div><h4>Growth &amp; Partnerships</h4></div>
+    </div>
+    <div style="font:400 13.5px/1.5 var(--body);color:var(--ink-muted);margin-top:16px;">Advisory — actively seeking mentors from the Rupa Mall innovator network across payments, fintech regulation, and go-to-market.</div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>15</span></div>
+</section>
+
+<!-- ============ 16 · THE ASK ============ -->
+<section class="slide">
+  <div class="kicker">The ask</div>
+  <h1 class="title">Let's bring programmable payments to East Africa.</h1>
+  <div class="body">
+    <div style="font:600 12px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:12px;">What we're seeking at the showcase</div>
+    <div class="ask">
+      <div class="a"><svg class="ic" viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><h4>Seed / grant capital</h4><p>Funding to build Phase 2 and extend runway.</p></div>
+      <div class="a"><svg class="ic" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg><h4>Pilot partners</h4><p>Merchants &amp; corporates to run live M-Pesa pilots.</p></div>
+      <div class="a"><svg class="ic" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg><h4>Mentorship &amp; advisory</h4><p>Technical and regulatory guidance to scale safely.</p></div>
+      <div class="a"><svg class="ic" viewBox="0 0 24 24"><path d="M6 9V2h12v7a6 6 0 0 1-12 0zM6 5H3v2a3 3 0 0 0 3 3M18 5h3v2a3 3 0 0 1-3 3M9 21h6M12 15v6"/></svg><h4>Commercialisation</h4><p>Prize &amp; partner support to reach market.</p></div>
+    </div>
+    <div style="font:400 14px/1.5 var(--body);color:var(--ink-muted);margin-top:14px;"><b style="color:var(--ink)">Use of funds:</b> multi-rail + multi-validator BFT · first merchant pilots · compliance &amp; legal.</div>
+    <div class="contact">
+      <div class="qr" style="display:flex;align-items:center;justify-content:center;">
+        <svg class="dia" style="width:54px;height:54px" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>
+      </div>
+      <div>
+        <h3>Get in touch</h3>
+        <p><span class="mono">kamandembugua18@gmail.com</span><br>Victor Mbugua Kamande · Founder &amp; CEO, LinkMint</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>16</span></div>
+</section>
+
+</body>
+</html>

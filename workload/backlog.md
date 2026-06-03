@@ -41,7 +41,7 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 |---|-------------|------------------------------|-------|------------|--------|
 | 19 | [work19](work/work19.md) / [flow19](flow/flow19.md) | 2.19 Invoice (invoices) | Python/FastAPI | 01 | done |
 | 20 | [work20](work/work20.md) / [flow20](flow/flow20.md) | 2.7 Escrow manager | Go/chi | 01,03 | todo |
-| 21 | [work21](work/work21.md) / [flow21](flow/flow21.md) | 2.8 Fee-pricing service | Python/FastAPI | 10 | todo |
+| 21 | [work21](work/work21.md) / [flow21](flow/flow21.md) | 2.8 Fee-pricing service | Python/FastAPI | 10 | done |
 | 22 | [work22](work/work22.md) / [flow22](flow/flow22.md) | 2.9 Refund-dispute service | Python/FastAPI | 02,23 | todo |
 | 23 | [work23](work/work23.md) / [flow23](flow/flow23.md) | 2.12 Settlement service | Go/chi | 02,10,16 | todo |
 | 24 | [work24](work/work24.md) / [flow24](flow/flow24.md) | 2.13 Wallet service | Go/chi | (chain RPC) | todo |

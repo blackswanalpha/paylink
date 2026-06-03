@@ -94,3 +94,49 @@ describe('notifications.markAllRead', () => {
     expect(call.headers['Idempotency-Key']).toBeTypeOf('string');
   });
 });
+
+const PREFS = {
+  channels: { in_app: true, email: false, sms: true },
+  events: {
+    'paylink.created': false,
+    'paylink.verified': true,
+    'paylink.cancelled': true,
+    'payment.failed': true,
+  },
+  updated_at: '2026-06-03T00:00:00Z',
+};
+
+describe('notifications.getPreferences', () => {
+  it('GETs /v1/notifications/preferences and returns the effective set', async () => {
+    const mock = createMockFetch({ status: 200, body: PREFS });
+    const client = new LinkMintClient({ baseUrl: BASE, fetch: mock.fetch });
+
+    const result = await client.notifications.getPreferences();
+
+    expect(result.channels.email).toBe(false);
+    expect(result.events['paylink.created']).toBe(false);
+    expect(result.updated_at).toBe('2026-06-03T00:00:00Z');
+    const call = mock.lastCall();
+    expect(call.method).toBe('GET');
+    expect(new URL(call.url).pathname).toBe('/v1/notifications/preferences');
+  });
+});
+
+describe('notifications.updatePreferences', () => {
+  it('PUTs /v1/notifications/preferences with the patch body + auto idempotency key', async () => {
+    const mock = createMockFetch({ status: 200, body: PREFS });
+    const client = new LinkMintClient({ baseUrl: BASE, fetch: mock.fetch });
+
+    const result = await client.notifications.updatePreferences({
+      channels: { email: false },
+      events: { 'paylink.created': false },
+    });
+
+    expect(result.channels.email).toBe(false);
+    const call = mock.lastCall();
+    expect(call.method).toBe('PUT');
+    expect(new URL(call.url).pathname).toBe('/v1/notifications/preferences');
+    expect(call.headers['Idempotency-Key']).toBeTypeOf('string');
+    expect(call.body).toEqual({ channels: { email: false }, events: { 'paylink.created': false } });
+  });
+});

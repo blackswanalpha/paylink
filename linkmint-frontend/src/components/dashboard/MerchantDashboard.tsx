@@ -42,9 +42,12 @@ const RECENT_LIMIT = 8;
 export function MerchantDashboard({
   initialToken,
   creatorAddr,
+  slot,
 }: {
   initialToken: string;
   creatorAddr: string;
+  /** Optional server-rendered card slotted between the metrics and the table (work08 smoke). */
+  slot?: React.ReactNode;
 }) {
   const [client, setClient] = useState<LinkMintClient | null>(null);
   useEffect(() => {
@@ -139,6 +142,9 @@ export function MerchantDashboard({
             </SimpleGrid>
           </Stagger>
         </Loadable>
+
+        {/* work08 — server-rendered identity card (proves the new SDK ↔ gateway path). */}
+        {slot}
 
         {/* Recent PayLinks */}
         <Panel p={0} overflow="hidden">

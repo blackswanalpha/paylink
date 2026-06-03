@@ -89,6 +89,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         jwt_kid=keys.kid,
         oauth_fake=settings.oauth_fake,
     )
+    if settings.password_reset_dev_return_token:
+        # DEV ONLY: the reset-request response echoes the raw reset token. Never enable in prod —
+        # log loudly so an accidental enablement is impossible to miss.
+        log.warning(
+            "password_reset_dev_return_token_enabled",
+            detail="raw reset tokens are returned in API responses — DEV/LOCAL ONLY",
+        )
     # work15 — bus consumer (subscribes to the bus → KycConsumer.handle). Lazily imported; runs only
     # when IDENTITY_EVENT_CONSUMER_ENABLED=true (all app.state is set by now).
     app.state.bus_task = None

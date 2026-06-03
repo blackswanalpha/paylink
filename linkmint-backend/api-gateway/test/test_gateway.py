@@ -114,6 +114,81 @@ def test_credentials_not_forwarded_upstream(client: httpx.Client, valid_token: s
     assert "x-api-key" not in headers
 
 
+# ── work08 pass-through routes (identity/merchant/compliance/admin/audit) ────────────────────
+# These upstreams self-verify the identity-issued RS256 token, so the gateway must forward the
+# Authorization header (NOT strip it like the paylink path) and must NOT inject its own X-Creator-Addr.
+def test_passthrough_forwards_authorization(client: httpx.Client, valid_token: str) -> None:
+    r = client.get("/v1/users/me", headers=auth(valid_token))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["service"] == "identity"
+    assert body["path"] == "/v1/users/me"
+    # The bearer token reaches the upstream (it self-verifies); the gateway did not strip it.
+    assert body["headers"].get("authorization") == f"Bearer {valid_token}"
+
+
+def test_passthrough_injects_no_creator_addr(client: httpx.Client, valid_token: str) -> None:
+    r = client.get("/v1/users/me", headers=auth(valid_token))
+    assert r.status_code == 200
+    # The gateway is authoritative for X-Creator-Addr ONLY on the injecting routes; here it injects none.
+    assert "x-creator-addr" not in r.json()["headers"]
+
+
+def test_passthrough_strips_spoofed_creator_addr(client: httpx.Client, valid_token: str) -> None:
+    spoof = "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    r = client.get(
+        "/v1/users/me",
+        headers={**auth(valid_token), "X-Creator-Addr": spoof, "X-Partner-Id": "evil"},
+    )
+    assert r.status_code == 200
+    headers = r.json()["headers"]
+    # Anti-spoofing is global: a client-supplied identity header never reaches any upstream.
+    assert "x-creator-addr" not in headers
+    assert "x-partner-id" not in headers
+
+
+def test_passthrough_does_not_require_a_credential(client: httpx.Client) -> None:
+    # Public auth endpoints (register/login/refresh) must reach the upstream without a token; the
+    # gateway does not gate pass-through routes (the service authenticates). Contrast with /v1/paylinks.
+    r = client.get("/v1/users/me")
+    assert r.status_code == 200, r.text
+    assert r.json()["service"] == "identity"
+
+
+def test_audit_log_get_is_routed(client: httpx.Client, valid_token: str) -> None:
+    r = client.get("/v1/audit-log", headers=auth(valid_token))
+    assert r.status_code == 200, r.text
+    assert r.json()["path"] == "/v1/audit-log"
+
+
+def test_audit_log_post_intake_is_not_exposed(client: httpx.Client, valid_token: str) -> None:
+    # POST /v1/audit-log is internal intake; the edge route is GET-only, so a POST falls through to
+    # the catch-all 404 and never reaches the upstream.
+    r = client.post("/v1/audit-log", headers=auth(valid_token), json={"x": 1})
+    assert r.status_code == 404
+    assert_envelope(r.json(), "NOT_FOUND")
+
+
+# ── work21 fee-pricing pass-through (RS256 self-verify; /v1/pricing + /v1/fx) ────────────────────
+def test_fee_pricing_passthrough_routes(client: httpx.Client, valid_token: str) -> None:
+    r = client.get("/v1/fx/rates", headers=auth(valid_token))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["path"] == "/v1/fx/rates"
+    # Pass-through: the bearer token reaches the service (it self-verifies); none is stripped.
+    assert body["headers"].get("authorization") == f"Bearer {valid_token}"
+    # The gateway injects no X-Creator-Addr on a pass-through route.
+    assert "x-creator-addr" not in body["headers"]
+
+
+def test_fee_pricing_internal_surface_not_exposed(client: httpx.Client, valid_token: str) -> None:
+    # /v1/internal/* is trusted-network only — the gateway routes /v1/pricing + /v1/fx, so an
+    # internal path falls through to the catch-all 404 and never reaches the service.
+    r = client.post("/v1/internal/accruals", headers=auth(valid_token), json={"x": 1})
+    assert r.status_code == 404
+    assert_envelope(r.json(), "NOT_FOUND")
+
+
 # ── Correlation id ──────────────────────────────────────────────────────────────────────────
 def test_correlation_id_echoed_and_propagated(client: httpx.Client, valid_token: str) -> None:
     r = client.get("/v1/paylinks", headers={**auth(valid_token), "X-Request-Id": "corr-abc-123"})

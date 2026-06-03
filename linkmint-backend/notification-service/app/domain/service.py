@@ -19,6 +19,7 @@ from linkmint_idempotency import fingerprint
 from app.db.models import DeliveryRow, InboxNotificationRow
 from app.db.repository import NotifyRepository
 from app.domain.models import QUEUED, Channel
+from app.domain.preferences import default_preferences, merge_preferences
 from app.errors import AppError, ErrorCode
 from app.logging import get_logger
 from app.recipients.base import RecipientResolver
@@ -162,7 +163,15 @@ class NotificationService:
         created: list[uuid.UUID] = []
         to_enqueue: list[uuid.UUID] = []
 
+        # Recipient preferences gate the fan-out (opt-out: missing row/key = enabled). They are
+        # keyed by recipient_addr, so a user_id-only event (no address) keeps the default (all on).
+        prefs = default_preferences()
         if recipient_addr:
+            pref_row = await self._repo.get_preferences(recipient_addr)
+            if pref_row is not None:
+                prefs = merge_preferences(pref_row.channels, pref_row.events)
+
+        if recipient_addr and prefs.allows(event_kind, "in_app"):
             inbox_id = await self._write_inbox(
                 event_kind=event_kind,
                 recipient_addr=recipient_addr,
@@ -188,6 +197,9 @@ class NotificationService:
             )
 
         for channel, template in templates.items():
+            if not prefs.allows(event_kind, channel.value):
+                log.info("channel_skipped_by_pref", channel=channel.value, event_kind=event_kind)
+                continue
             address = recipient.address_for(channel)
             if not address:
                 log.info("channel_skipped_no_contact", channel=channel.value, event_kind=event_kind)

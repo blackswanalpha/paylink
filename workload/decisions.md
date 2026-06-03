@@ -385,3 +385,39 @@ Format:
   scraped). (5) If the owner later prefers Jaeger, only the docker-compose backend + Grafana datasource
   change — the libs export standard OTLP. The ADR-012 number is held by the parallel frontend track (FE
   work05); this backend ADR takes the next free number, 013.
+
+## ADR-014 — fee-pricing: platform pricing fee is distinct from the on-chain PLN fee; per-service ledger posting stays a no-op seam (work21)
+- **Status:** Accepted (work21)
+- **Date:** 2026-06-03
+- **Context:** fee-pricing-service (`backendfeatures.md` §2.8) is the single source of "what does this
+  payment cost": per-merchant tier + per-rail fee schedule + FX quoting + monthly platform-fee
+  invoicing. Two design questions touch the protocol invariants. (a) **A.5**: the chain charges a
+  0.5% PLN settlement fee split 70/20/10 (validators/treasury/burn) — work21's per-tier/per-rail
+  **platform** fee is a different, merchant-facing SaaS-style fee and must not be conflated with, or
+  derive from, the on-chain fee. (b) **A.6**: a platform-fee invoice is a monetary flow, which A.6
+  says should eventually have matching debit/credit ledger entries — but work16 (the ledger libs)
+  explicitly **deferred per-service posting** ("none wired yet; the settlement hub is the natural
+  ledger writer"), and only payment-orchestrator gates on `ledger-migrate`.
+- **Decision:** (1) The platform fee is computed purely from `pricing.tiers.platform_pct_bps` +
+  `pricing.rail_fee_schedules.pct_bps/fixed` (integer minor units, `Decimal` HALF_UP, no floats); the
+  service contains **zero** on-chain-fee logic (no 0.5%, no 70/20/10, no treasury/burn/mint). The
+  optional `chain.paylink.verified` accrual seam (`PRICING_ACCRUAL_FROM_EVENTS`, default **OFF**) does
+  not split or derive any chain fee — it would only record a realized platform-fee accrual. (2) FX
+  rates are **locked at quote time** and stored on the `pricing.quotes` row (`fx_base/fx_quote/fx_rate`
+  + the full `breakdown` JSONB) for audit; a later cache refresh never mutates an issued quote. (3)
+  Ship a `LedgerPoster` **port + `NoopLedgerPoster` default**, gated by `PRICING_LEDGER_POSTING_ENABLED`
+  (false). Honors A.6 intent (the seam is one config flag + a `ledger-python` adapter away) without
+  coupling fee-pricing to `ledger-migrate` or risking double-posting against the future settlement
+  writer. (4) The catalog event names (`pricing.fee_quote.issued` / `fx.rate.updated` /
+  `invoice.platform_fee.issued`) are kept; per the catalog's first-dot-segment rule they route to the
+  `pricing` / `fx` / `invoice` topics (added to `redpanda-init`), not the `fee` topic the catalog's
+  column previously implied — `fee` is reserved for future `fee.`-prefixed events.
+- **PII / invariants:** Non-custodial (A.1) — pricing metadata only; `net` is informational and never
+  moves funds. Event payloads carry ids/amounts/metadata only (no secrets/PII). The only monetary-table
+  `UPDATE` stamps an accrual's `invoice_id` (a billing-status transition), never edits an `amount`.
+- **Consequences:** (1) When work16 per-service posting is enabled (or settlement-service takes over),
+  flip the flag and supply a real `ledger-python` adapter — no schema change. (2) The tier set is the
+  superset `standard/startup/growth/scale/enterprise` (work21 names + work10's `startup`); the consumer
+  is tolerant (unknown tier → `standard` + warn) so a future work10 enum alignment is non-breaking.
+  (3) work21 closes against the Backend-service DoD (≥80% coverage — 92%; lint/types clean;
+  healthz/readyz/metrics; error envelope; idempotency; outbox relay + bus consumer; migrations).
