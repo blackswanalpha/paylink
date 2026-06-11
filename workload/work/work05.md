@@ -37,11 +37,11 @@ Each service kept an auth seam (work01) for the gateway to fill.
 - The auth seam left in work01/work02 services.
 
 ## Acceptance criteria
-- [ ] `/v1/*` routes to the correct service; unknown routes → standard 404 envelope.
-- [ ] Valid JWT / API key passes; invalid/missing → 401/403 with error envelope.
-- [ ] Correlation IDs propagate downstream; basic rate limit enforced.
-- [ ] Tests pass; lint/build clean; docker-compose entry healthy.
-- [ ] Passes the relevant [definition-of-done.md](../definition-of-done.md) checklist(s).
+- [x] `/v1/*` routes to the correct service; unknown routes → standard 404 envelope.
+- [x] Valid JWT / API key passes; invalid/missing → 401/403 with error envelope.
+- [x] Correlation IDs propagate downstream; basic rate limit enforced.
+- [x] Tests pass; lint/build clean; docker-compose entry healthy.
+- [x] Passes the relevant [definition-of-done.md](../definition-of-done.md) checklist(s).
 
 ## Verification
 [verification.md](../verification.md) → "Full stack": call a routed endpoint with/without a
@@ -49,3 +49,4 @@ valid token; confirm routing + auth behavior and envelopes.
 
 ## Notes / log
 - Record the Kong-vs-custom decision as an ADR in [decisions.md](../decisions.md).
+- 2026-06-12 — audit re-verified: `kong config parse` clean; 19/19 acceptance matrix per backlog changelog; boxes ticked.

@@ -33,7 +33,7 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 13 | [work13](work/work13.md) / [flow13](flow/flow13.md) | 2.17 Audit-log service | Go/chi | 15,16 | done |
 | 14 | [work14](work/work14.md) / [flow14](flow/flow14.md) | 2.18 Notification (SMS/email) | Python/FastAPI | 15 | done |
 | 08 | [work08](work/work08.md) / [flow08](flow/flow08.md) | docker-compose + CI (incremental) | infra | 01–14 | done |
-| 35 | [work35](work/work35.md) / [flow35](flow/flow35.md) | fix: orchestrator rejects payable (PENDING) PayLinks | Go/chi | 01,02 | todo |
+| 35 | [work35](work/work35.md) / [flow35](flow/flow35.md) | fix: orchestrator rejects payable (PENDING) PayLinks | Go/chi | 01,02 | done |
 
 ## Phase 2 — Beta
 
@@ -614,3 +614,18 @@ never expands the active item ([scope.md](scope.md)).
   current bus consumers self-commit and already carry domain-keyed idempotency (notification
   `deliveries_dedupe_uidx`; compliance activity-ledger), so a forced wrap would break atomicity; same row
   covers the first prod Go bus-consumer adopter (none exists yet — only a chain-event-mirror test consumer).
+- 2026-06-12 — **work01–07 audit + work35 → done.** Audited work01–07 against their acceptance
+  criteria + DoD: all seven verified achieved (all builds/tests green; SDK 127 tests / 98.66% cov;
+  orchestrator 15 pkgs; proof-validator + mpesa + chain suites pass; paylink-service ruff clean,
+  90 unit tests). Synced stale doc state: work01/02/06 headers todo→done, acceptance boxes ticked
+  (work01/02/03/05/06). **Committed the ADR-015 chain hardening** (47 files: mandatory tx/block
+  signatures w/ pubKey, startup replay, follower BlockProcessor, deterministic fees, supply
+  accounting, evidence anti-replay — see decisions.md) + the paylink-service pubKey signer.
+  **Fixed work35**: orchestrator `Initiate` accepts `{CREATED, PENDING}`; live e2e on fresh volumes
+  proved create→201 PENDING→initiate→**201 AWAITING_PAYMENT** (was always 409), cancelled→409,
+  duplicate→409 `PAYMENT_EXISTS`, and the full MPesa settle e2e stays green against the hardened
+  chain (which also live-proves the Python signer vs enforced sig verification). Invariants 8/8 PASS.
+  Deferred (low, filed here): block producer persists failed-tx receipts tagged with a BlockHeight
+  no block ends up occupying when ALL drained txs fail (`consensus/block_producer.go` all-failed
+  path) — tag with a sentinel height in a follow-up; known Phase-2 backlog unchanged (RFC 9381
+  ECVRF before economic committee weight, fork choice, ChainID in SignableBytes if multi-chain).

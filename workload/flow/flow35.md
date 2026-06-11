@@ -4,7 +4,7 @@
 live, unsettled PayLink (`CREATED`/`PENDING`), not only `CREATED`.
 
 ## Pre-flight
-- [ ] Read [work35](../work/work35.md), work01/02 notes. Reproduce the 409 (create via SDK/gateway → initiate). Set `in-progress`.
+- [x] Read [work35](../work/work35.md), work01/02 notes. Reproduce the 409 (create via SDK/gateway → initiate). Set `in-progress`.
 
 ## Steps
 | # | Step | Agent / Skill |
@@ -16,4 +16,4 @@ live, unsettled PayLink (`CREATED`/`PENDING`), not only `CREATED`.
 | 5 | Verify live: `docker compose --profile e2e` create→initiate→(settle) | `/verify` |
 
 ## Done
-- [ ] [work35](../work/work35.md) criteria met; mark `done` in [backlog.md](../backlog.md).
+- [x] [work35](../work/work35.md) criteria met; mark `done` in [backlog.md](../backlog.md).

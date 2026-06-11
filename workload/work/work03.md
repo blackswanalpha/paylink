@@ -41,11 +41,11 @@ single-validator model it is the path from "rail says paid" to "chain settles".
 - **Imports `paylink-chain/internal/types` + `internal/crypto`** for byte-exact wire format.
 
 ## Acceptance criteria
-- [ ] Valid proof → settlement tx broadcast → PayLink settles on-chain.
-- [ ] Invalid signature/shape → rejected with error envelope; nothing broadcast.
-- [ ] A proof already settled on-chain is not re-broadcast/double-settled (A.7).
-- [ ] Tests ≥80%; lint/build clean; docker-compose entry healthy.
-- [ ] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] Valid proof → settlement tx broadcast → PayLink settles on-chain.
+- [x] Invalid signature/shape → rejected with error envelope; nothing broadcast.
+- [x] A proof already settled on-chain is not re-broadcast/double-settled (A.7).
+- [x] Tests ≥80%; lint/build clean; docker-compose entry healthy.
+- [x] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Adapter"/"Full stack": feed a signed proof, confirm
@@ -54,3 +54,4 @@ on-chain settlement via RPC; feed a tampered proof, confirm rejection.
 ## Notes / log
 - Anti-replay is enforced on-chain — the service should defer to it, not duplicate the check
   as the source of truth.
+- 2026-06-12 — audit re-verified: builds/tests green against the committed ADR-015 chain (replace-directive consumers unaffected); boxes ticked.

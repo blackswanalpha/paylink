@@ -1,6 +1,6 @@
 # work01 — Scaffold paylink-service (Python/FastAPI CRUD, Postgres, migrations)
 
-- **Status:** todo
+- **Status:** done
 - **Owner:** service-builder
 - **Depends on:** —
 - **Flow:** [flow01](../flow/flow01.md)
@@ -52,15 +52,15 @@ work05.
 - The proof format and error-envelope/API conventions in [standard.md](../standard.md).
 
 ## Acceptance criteria
-- [ ] `POST /v1/paylinks` creates a PayLink record and returns it with an id.
-- [ ] `GET /v1/paylinks/:id` and `GET /v1/paylinks?creator=&receiver=&status=&page=` work,
+- [x] `POST /v1/paylinks` creates a PayLink record and returns it with an id.
+- [x] `GET /v1/paylinks/:id` and `GET /v1/paylinks?creator=&receiver=&status=&page=` work,
       paginated, with the standard list shape.
-- [ ] `POST /v1/paylinks/:id/cancel` transitions per the documented PayLink rules.
-- [ ] On-chain settlement status is reflected by reading the lVM RPC.
-- [ ] All config via env vars; no secrets in code; `.env.example` provided.
-- [ ] Migrations run cleanly from empty; `docker-compose up` brings Postgres + service healthy.
-- [ ] Unit + integration tests pass; coverage ≥80%; lint + build clean.
-- [ ] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] `POST /v1/paylinks/:id/cancel` transitions per the documented PayLink rules.
+- [x] On-chain settlement status is reflected by reading the lVM RPC.
+- [x] All config via env vars; no secrets in code; `.env.example` provided.
+- [x] Migrations run cleanly from empty; `docker-compose up` brings Postgres + service healthy.
+- [x] Unit + integration tests pass; coverage ≥80%; lint + build clean.
+- [x] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service (Python/FastAPI)" + "Full stack":
@@ -87,3 +87,4 @@ create → get → list → cancel; confirm error envelope on a bad request.
   - **Deferred seams (follow-ups):** background reconciliation worker + 60s expiry sweeper;
     compliance/KYC gate → work12; real event transport → work15; gateway-mandatory `X-Creator-Addr`
     → work05.
+- 2026-06-12 — audit re-verified: all criteria + Backend-service DoD hold (ruff clean, 90 unit tests pass incl. the ADR-015 pubKey signer change, now committed); status header synced, boxes ticked.

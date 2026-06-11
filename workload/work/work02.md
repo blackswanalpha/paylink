@@ -1,6 +1,6 @@
 # work02 — payment-orchestrator (lifecycle coordination)
 
-- **Status:** todo
+- **Status:** done
 - **Owner:** service-builder
 - **Depends on:** 01
 - **Flow:** [flow02](../flow/flow02.md)
@@ -51,13 +51,13 @@ or hold funds.
 - paylink-service's `/v1/paylinks` for record lookups.
 
 ## Acceptance criteria
-- [ ] `POST /v1/payments` initiates a payment lifecycle for an existing PayLink.
-- [ ] `GET /v1/payments/:id` returns lifecycle status consistent with on-chain state.
-- [ ] The service subscribes to chain events and advances lifecycle on settle/cancel.
-- [ ] Duplicate events/callbacks are idempotent (no double transition).
-- [ ] Lifecycle states do not diverge from the on-chain PayLink FSM.
-- [ ] Tests ≥80%; lint + build clean; docker-compose entry healthy.
-- [ ] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] `POST /v1/payments` initiates a payment lifecycle for an existing PayLink.
+- [x] `GET /v1/payments/:id` returns lifecycle status consistent with on-chain state.
+- [x] The service subscribes to chain events and advances lifecycle on settle/cancel.
+- [x] Duplicate events/callbacks are idempotent (no double transition).
+- [x] Lifecycle states do not diverge from the on-chain PayLink FSM.
+- [x] Tests ≥80%; lint + build clean; docker-compose entry healthy.
+- [x] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service (Go/chi)" + "Full stack": run the stack,
@@ -67,3 +67,4 @@ advances exactly once.
 ## Notes / log
 - Treat the on-chain FSM as the single source of truth; the orchestrator is a projection +
   driver, never an authority on settlement.
+- 2026-06-12 — audit re-verified: build/vet/tests green (15 pkgs, domain 88% cov). work35 fixed — `Initiate` now accepts `CREATED`+`PENDING`, so the initiate criterion holds in the integrated stack (it 409d before). Status header synced, boxes ticked.
