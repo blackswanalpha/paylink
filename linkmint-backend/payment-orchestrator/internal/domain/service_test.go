@@ -106,12 +106,36 @@ func TestInitiatePayLinkNotFound(t *testing.T) {
 	}
 }
 
+// TestInitiatePending is the work35 case: with chain submit enabled, paylink-service returns
+// the PayLink as PENDING by the time create responds, and initiate must still succeed.
+func TestInitiatePending(t *testing.T) {
+	rec := &domain.PayLinkRecord{ID: plID, Status: "PENDING", Expiry: clock.Add(time.Hour)}
+	store := memory.New()
+	pub := &capturePublisher{}
+	svc := newSvc(store, &fakePayLinks{rec: rec}, &fakeChain{}, pub)
+
+	p, err := svc.Initiate(context.Background(), domain.InitiateInput{PayLinkID: plID, Rail: "mpesa"})
+	if err != nil {
+		t.Fatalf("Initiate on PENDING PayLink: %v", err)
+	}
+	if p.Status != lifecycle.StateAwaitingPayment {
+		t.Fatalf("unexpected payment: %+v", p)
+	}
+	if len(pub.events) != 1 || pub.events[0] != domain.EventPaymentInitiated {
+		t.Fatalf("expected payment.initiated event, got %v", pub.events)
+	}
+}
+
 func TestInitiateNotPayable(t *testing.T) {
-	rec := &domain.PayLinkRecord{ID: plID, Status: "VERIFIED", Expiry: clock.Add(time.Hour)}
-	svc := newSvc(memory.New(), &fakePayLinks{rec: rec}, &fakeChain{}, &capturePublisher{})
-	_, err := svc.Initiate(context.Background(), domain.InitiateInput{PayLinkID: plID, Rail: "mpesa"})
-	if mustAppErr(t, err).Code != httpx.CodePayLinkNotPayable {
-		t.Fatalf("want PAYLINK_NOT_PAYABLE, got %v", err)
+	for _, status := range []string{"VERIFIED", "CANCELLED", "FAILED", "EXPIRED"} {
+		t.Run(status, func(t *testing.T) {
+			rec := &domain.PayLinkRecord{ID: plID, Status: status, Expiry: clock.Add(time.Hour)}
+			svc := newSvc(memory.New(), &fakePayLinks{rec: rec}, &fakeChain{}, &capturePublisher{})
+			_, err := svc.Initiate(context.Background(), domain.InitiateInput{PayLinkID: plID, Rail: "mpesa"})
+			if mustAppErr(t, err).Code != httpx.CodePayLinkNotPayable {
+				t.Fatalf("want PAYLINK_NOT_PAYABLE, got %v", err)
+			}
+		})
 	}
 }
 

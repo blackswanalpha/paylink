@@ -68,6 +68,13 @@ type InitiateInput struct {
 	Rail      string
 }
 
+// payableStatuses are the live, unsettled paylink-service OffChainStatus values: CREATED
+// (row written, on-chain submit in flight) and PENDING (submitted, awaiting validator
+// quorum). With chain submit enabled a PayLink is PENDING by the time create returns, so
+// PENDING must be payable (work35). Terminal states (VERIFIED/CANCELLED/FAILED/EXPIRED)
+// are rejected.
+var payableStatuses = map[string]bool{"CREATED": true, "PENDING": true}
+
 // Initiate starts a payment lifecycle for an existing, payable PayLink. It validates the
 // PayLink via paylink-service (the record owner), then records an AWAITING_PAYMENT payment.
 // It moves no funds and verifies no proofs (that is work03/04).
@@ -87,7 +94,7 @@ func (s *Service) Initiate(ctx context.Context, in InitiateInput) (Payment, erro
 	if rec == nil {
 		return Payment{}, httpx.NewError(httpx.CodePayLinkNotFound, "no PayLink with that id", map[string]any{"paylink_id": plID})
 	}
-	if rec.Status != "CREATED" {
+	if !payableStatuses[rec.Status] {
 		return Payment{}, httpx.NewError(httpx.CodePayLinkNotPayable,
 			fmt.Sprintf("PayLink is %s and cannot accept a new payment", rec.Status),
 			map[string]any{"paylink_id": plID, "status": rec.Status})
