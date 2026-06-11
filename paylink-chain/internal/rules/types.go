@@ -40,7 +40,7 @@ type EvalContext struct {
 	Sender         types.Address
 	PayLinkOwner   types.Address
 	PayLinkCreator types.Address
-	Receiver       types.Address   // "to" address for transfers
+	Receiver       types.Address // "to" address for transfers
 	Amount         uint64
 	TransferCount  uint64
 	Approvals      []types.Address // addresses that have approved (for MultiApproval)

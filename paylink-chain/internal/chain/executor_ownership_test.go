@@ -922,20 +922,21 @@ func TestExecuteBlock_OwnershipRevert(t *testing.T) {
 	s := state.NewStateDB(genesis)
 	exec := NewExecutor(s, nil)
 
-	alice := types.HexToAddress("0x000000000000000000000000000000000000000A")
-	bob := types.HexToAddress("0x000000000000000000000000000000000000000B")
+	// ExecuteBlock enforces signatures, so alice and bob need real keys.
+	aliceKey, alice := genTestKey(t)
+	bobKey, bob := genTestKey(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := crypto.SHA256Hash([]byte("PLK-revert"))
 	now := time.Now().Unix()
 
-	// Create PayLink directly
+	// Create PayLink directly (ExecuteTx does not verify signatures)
 	createPayLink(t, exec, s, alice, 0, plID, receiver, 1000, now)
 
-	// Build a block with: valid transfer + invalid tx (bad nonce)
-	txGood := makeTx(types.TxTransferPayLink, alice, 1, types.TransferPayLinkPayload{
+	// Build a block with: valid transfer + invalid tx (valid signature, bad nonce)
+	txGood := makeSignedTx(t, types.TxTransferPayLink, aliceKey, 1, types.TransferPayLinkPayload{
 		PayLinkID: plID, To: bob,
 	})
-	txBad := makeTx(types.TxTransferPayLink, bob, 99, types.TransferPayLinkPayload{
+	txBad := makeSignedTx(t, types.TxTransferPayLink, bobKey, 99, types.TransferPayLinkPayload{
 		PayLinkID: plID, To: alice,
 	})
 

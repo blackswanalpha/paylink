@@ -3,6 +3,7 @@ package test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,6 +38,20 @@ type testNode struct {
 	adminKey   []byte
 	genesis    *types.GenesisConfig
 	dataDir    string
+	keys       map[types.Address]*ecdsa.PrivateKey // signing keys for every sending actor
+}
+
+// newActor generates a fresh P-256 key, registers it for signing, and returns its address.
+// Every address that SENDS transactions must come from here (or be the admin).
+func (n *testNode) newActor(t *testing.T) types.Address {
+	t.Helper()
+	key, err := pcrypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	addr := pcrypto.PrivateKeyToAddress(key)
+	n.keys[addr] = key
+	return addr
 }
 
 func startTestNode(t *testing.T) *testNode {
@@ -144,6 +159,7 @@ func startTestNode(t *testing.T) *testNode {
 		adminKey:   adminKey,
 		genesis:    genesis,
 		dataDir:    dataDir,
+		keys:       map[types.Address]*ecdsa.PrivateKey{adminAddr: key},
 	}
 
 	t.Cleanup(func() {
@@ -258,6 +274,10 @@ func doRPC(t *testing.T, url, method string, params interface{}) []byte {
 
 func sendTx(t *testing.T, node *testNode, txType types.TxType, from types.Address, nonce uint64, payload interface{}) string {
 	t.Helper()
+	key, ok := node.keys[from]
+	if !ok {
+		t.Fatalf("no signing key registered for sender %s (use node.newActor)", from.Hex())
+	}
 	data, _ := json.Marshal(payload)
 	tx := types.Transaction{
 		Type:    txType,
@@ -265,7 +285,13 @@ func sendTx(t *testing.T, node *testNode, txType types.TxType, from types.Addres
 		Nonce:   nonce,
 		Payload: data,
 	}
+	tx.PubKey = pcrypto.MarshalPublicKey(&key.PublicKey)
 	tx.Hash = pcrypto.SHA256Hash(tx.SignableBytes())
+	sig, err := pcrypto.Sign(tx.Hash, key)
+	if err != nil {
+		t.Fatalf("sign tx: %v", err)
+	}
+	tx.Signature = sig
 
 	result := rpcCall(t, node.rpcURL, "paylink_sendTransaction", tx)
 	var sendResp rpc.SendTxResponse
@@ -286,6 +312,31 @@ func waitForBlock(t *testing.T, node *testNode, minHeight uint64, timeout time.D
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("chain did not reach height %d within %s", minHeight, timeout)
+}
+
+// waitForReceipt polls until a receipt for txHash is stored. A failed transaction
+// never advances the chain on its own (the producer commits only successful txs),
+// so waiting on its receipt is the way to observe its outcome.
+func waitForReceipt(t *testing.T, node *testNode, txHash string, timeout time.Duration) rpc.TxReceiptResponse {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		body := doRPC(t, node.rpcURL, "paylink_getTransactionReceipt", map[string]string{
+			"hash": txHash,
+		})
+		var resp struct {
+			Result json.RawMessage `json:"result"`
+			Error  *rpc.RPCError   `json:"error"`
+		}
+		if err := json.Unmarshal(body, &resp); err == nil && resp.Error == nil && len(resp.Result) > 0 {
+			var receipt rpc.TxReceiptResponse
+			json.Unmarshal(resp.Result, &receipt)
+			return receipt
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("receipt for tx %s not available within %s", txHash, timeout)
+	return rpc.TxReceiptResponse{}
 }
 
 func getAccount(t *testing.T, node *testNode, addr types.Address) rpc.AccountResponse {
@@ -397,7 +448,7 @@ func TestIntegration_TransferFlow(t *testing.T) {
 func TestIntegration_MultipleTransfers(t *testing.T) {
 	node := startTestNode(t)
 
-	alice := types.HexToAddress("0x000000000000000000000000000000000000a11c")
+	alice := node.newActor(t)
 	bob := types.HexToAddress("0x0000000000000000000000000000000000000b0b")
 
 	// Admin → Alice
@@ -433,15 +484,15 @@ func TestIntegration_MultipleTransfers(t *testing.T) {
 func TestIntegration_PayLinkLifecycle(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-INTEG-001"))
 	proofHash := pcrypto.SHA256Hash([]byte("mpesa-tx-ABC123"))
 
 	// Setup: fund 3 validators and stake them
-	v1 := types.HexToAddress("0x0000000000000000000000000000000000000010")
-	v2 := types.HexToAddress("0x0000000000000000000000000000000000000011")
-	v3 := types.HexToAddress("0x0000000000000000000000000000000000000012")
+	v1 := node.newActor(t)
+	v2 := node.newActor(t)
+	v3 := node.newActor(t)
 
 	nonce := uint64(0)
 	for _, v := range []types.Address{v1, v2, v3} {
@@ -534,7 +585,7 @@ func TestIntegration_PayLinkLifecycle(t *testing.T) {
 func TestIntegration_PayLinkCancellation(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-CANCEL-001"))
 
@@ -561,7 +612,7 @@ func TestIntegration_PayLinkCancellation(t *testing.T) {
 func TestIntegration_PayLinkAdminFail(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-FAIL-001"))
 
@@ -587,7 +638,7 @@ func TestIntegration_PayLinkAdminFail(t *testing.T) {
 func TestIntegration_StakingLifecycle(t *testing.T) {
 	node := startTestNode(t)
 
-	validator := types.HexToAddress("0x0000000000000000000000000000000000000010")
+	validator := node.newActor(t)
 
 	// Fund validator
 	sendTx(t, node, types.TxTransfer, node.adminAddr, 0, types.TransferPayload{
@@ -657,7 +708,7 @@ func TestIntegration_StakingLifecycle(t *testing.T) {
 func TestIntegration_Slashing(t *testing.T) {
 	node := startTestNode(t)
 
-	validator := types.HexToAddress("0x0000000000000000000000000000000000000010")
+	validator := node.newActor(t)
 
 	// Fund and stake
 	sendTx(t, node, types.TxTransfer, node.adminAddr, 0, types.TransferPayload{
@@ -690,7 +741,7 @@ func TestIntegration_Slashing(t *testing.T) {
 func TestIntegration_RewardDistribution(t *testing.T) {
 	node := startTestNode(t)
 
-	validator := types.HexToAddress("0x0000000000000000000000000000000000000010")
+	validator := node.newActor(t)
 
 	// Fund and stake validator
 	sendTx(t, node, types.TxTransfer, node.adminAddr, 0, types.TransferPayload{
@@ -723,9 +774,9 @@ func TestIntegration_RewardDistribution(t *testing.T) {
 func TestIntegration_AntiReplay(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
-	v1 := types.HexToAddress("0x0000000000000000000000000000000000000010")
+	v1 := node.newActor(t)
 
 	proofHash := pcrypto.SHA256Hash([]byte("mpesa-tx-UNIQUE-001"))
 
@@ -736,8 +787,8 @@ func TestIntegration_AntiReplay(t *testing.T) {
 	// OR: we set up genesis with required=1
 
 	// Since our genesis has required=3, let's setup 3 validators
-	v2 := types.HexToAddress("0x0000000000000000000000000000000000000011")
-	v3 := types.HexToAddress("0x0000000000000000000000000000000000000012")
+	v2 := node.newActor(t)
+	v3 := node.newActor(t)
 
 	nonce := uint64(0)
 	for _, v := range []types.Address{v1, v2, v3} {
@@ -782,13 +833,21 @@ func TestIntegration_AntiReplay(t *testing.T) {
 	})
 	waitForBlock(t, node, 5, 3*time.Second)
 
-	// Try to reuse proof - these should fail silently (rejected by executor)
+	// Try to reuse proof - these should fail (rejected by executor).
+	// Failed txs don't produce a block, so wait on their receipts instead.
+	var replayHashes []string
 	for _, v := range []types.Address{v1, v2, v3} {
-		sendTx(t, node, types.TxSubmitValidation, v, 2, types.SubmitValidationPayload{
+		h := sendTx(t, node, types.TxSubmitValidation, v, 2, types.SubmitValidationPayload{
 			PayLinkID: plID2, ProofHash: proofHash,
 		})
+		replayHashes = append(replayHashes, h)
 	}
-	waitForBlock(t, node, 6, 3*time.Second)
+	for _, h := range replayHashes {
+		r := waitForReceipt(t, node, h, 3*time.Second)
+		if r.Success {
+			t.Fatal("Reused proof validation should fail")
+		}
+	}
 
 	// PayLink 2 should still be CREATED (not VERIFIED) since proof was rejected
 	pl2 := getPayLink(t, node, plID2)
@@ -924,10 +983,10 @@ func TestIntegration_RPCErrors(t *testing.T) {
 func TestIntegration_ProofHashConsistency(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
-	v1 := types.HexToAddress("0x0000000000000000000000000000000000000010")
-	v2 := types.HexToAddress("0x0000000000000000000000000000000000000011")
+	v1 := node.newActor(t)
+	v2 := node.newActor(t)
 
 	proof1 := pcrypto.SHA256Hash([]byte("proof-A"))
 	proof2 := pcrypto.SHA256Hash([]byte("proof-B"))
@@ -961,11 +1020,14 @@ func TestIntegration_ProofHashConsistency(t *testing.T) {
 	})
 	waitForBlock(t, node, 4, 3*time.Second)
 
-	// V2 submits different proof2 - should be rejected
-	sendTx(t, node, types.TxSubmitValidation, v2, 1, types.SubmitValidationPayload{
+	// V2 submits different proof2 - should be rejected.
+	// A failed tx doesn't produce a block, so wait on its receipt instead.
+	mismatchHash := sendTx(t, node, types.TxSubmitValidation, v2, 1, types.SubmitValidationPayload{
 		PayLinkID: plID, ProofHash: proof2,
 	})
-	waitForBlock(t, node, 5, 3*time.Second)
+	if r := waitForReceipt(t, node, mismatchHash, 3*time.Second); r.Success {
+		t.Fatal("Mismatched proof validation should fail")
+	}
 
 	// Vote count should still be 1 (v2's vote rejected)
 	voteResult := rpcCall(t, node.rpcURL, "paylink_getVoteCount", map[string]string{

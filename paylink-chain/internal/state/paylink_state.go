@@ -175,17 +175,10 @@ func (s *StateDB) PayLinkCount() int {
 	return len(s.paylinks)
 }
 
-// GetVotersForPayLink returns all validator addresses that voted on a PayLink.
+// GetVotersForPayLink returns all validator addresses that voted on a PayLink,
+// sorted by address (same contract as GetVoters — deterministic order).
 func (s *StateDB) GetVotersForPayLink(plId types.Hash) []types.Address {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	var voters []types.Address
-	for k := range s.votes {
-		if k.PayLinkID == plId {
-			voters = append(voters, k.Validator)
-		}
-	}
-	return voters
+	return s.GetVoters(plId)
 }
 
 // UsedProofCount returns the total number of used proofs.

@@ -421,3 +421,52 @@ Format:
   is tolerant (unknown tier → `standard` + warn) so a future work10 enum alignment is non-breaking.
   (3) work21 closes against the Backend-service DoD (≥80% coverage — 92%; lint/types clean;
   healthz/readyz/metrics; error envelope; idempotency; outbox relay + bus consumer; migrations).
+
+## ADR-015 — paylink-chain hardening: mandatory tx/block signatures (supersedes ADR-005), startup replay, follower execution, deterministic fees, supply accounting
+- **Status:** Accepted (chain audit remediation)
+- **Date:** 2026-06-11
+- **Context:** A full audit of `paylink-chain/` found every trust boundary open: `VerifyWithAddress`
+  had zero callers (any address forgeable, including admin/validators), `StateDB` is in-memory with
+  no replay (restart ⇒ height N with genesis state, breaking A.7 used-proof persistence), P2P
+  followers stored blocks without validating or executing them (`AddBlock` even overwrote the
+  incoming hash), fee distribution iterated Go maps (payout amounts order-dependent ⇒ state-root
+  divergence), genesis was wall-clock-stamped, the producer mutated state before the block committed,
+  slashing evidence was replayable and liveness evidence unverifiable, and the burn/slash paths made
+  totalSupply drift from sum(balances+stakes).
+- **Decision:** (1) **Signatures are mandatory** (supersedes ADR-005's "not yet verified"): the tx
+  wire format gains `pubKey` (uncompressed P-256, 65B — no ecrecover on P-256) checked to derive
+  `from`; `crypto.VerifyTx` enforces pubkey→address, hash=SHA256(SignableBytes), and the ECDSA sig at
+  RPC admission, P2P admission, and `ExecuteBlock` (`ExecuteTx` stays nonce-only for unit tests).
+  `lvm.SignTx` and the Python signer (`paylink-service`) attach `pubKey`; `UnsignedSigner` modes are
+  now rejected by the chain. (2) **Blocks are signed and verified**: `BlockCommit` gains the proposer
+  `pubKey`; `chain.BlockProcessor` (follower path, wired to P2P OnBlock/sync) verifies linkage,
+  declared hash, proposer (genesis admin or active validator), commit sig, TxRoot, every tx sig, then
+  executes on a snapshot and compares the post-state root before `CommitBlock`. Phase-1 proposer is
+  the genesis admin: non-admin nodes never produce. (3) **Startup replay** (`chain.Replay`): blocks
+  1..tip re-execute on boot to rebuild state; root mismatch refuses to start (legacy unsigned chains
+  must wipe the devnet datadir). (4) **Determinism**: fee payouts and `GetVoters` sort by address;
+  mempool drain sorts senders; genesis timestamp comes from `genesisTimestamp` in the config (fixed
+  default 1735689600), never `time.Now()`. (5) **Atomicity**: block+txs+receipts commit in one badger
+  batch; the producer snapshots before `ExecuteBlock` and reverts on commit/sign failure; events
+  buffer per block and flush only after durable commit. (6) **Supply accounting**: the fee burn share
+  is *never minted* (`RecordBurn` tracks it without decrementing supply); slashed stake IS destroyed
+  (supply down, totalBurned up); fee distribution pre-checks the max-supply cap so it is
+  all-or-nothing. (7) **Slashing**: one slash per canonical offense (`EvidenceID` = type|validator|
+  height-or-seed, tracked in state + state root); liveness evidence is rejected as unverifiable.
+  (8) **VRF**: quorum/committee verification binds the proof's embedded pubkey to the validator's
+  REGISTERED VRF key and sources stake from state; the ed25519-based construction's prover-grinding
+  limitation is documented in `internal/crypto/ecvrf.go` — replace with RFC 9381 ECVRF before
+  committee selection carries economic weight (`SelectCommittee`'s private-key-map signature is
+  test/devnet-only and must not ship for multi-validator).
+- **Consequences:** (1) Wire format change: all clients must send `pubKey` — `pkg/lvm`, the Python
+  signer, and all e2e tests updated; old devnet data dirs are unverifiable and must be wiped.
+  (2) Followers now hold real state, so multi-node sync is meaningful; two-node e2e remains follow-up
+  work alongside RFC 9381 ECVRF and a journal-based (non-deep-clone) snapshot model for per-tx
+  performance. (3) RPC hardening shipped alongside: strict 0x-hex parsing (no zero-address aliasing),
+  32KB payload cap, configurable CORS (`-rpc-cors`) and WS origins (`-ws-origins`).
+- **Post-audit tightenings (same date):** the follower `BlockProcessor` accepts blocks ONLY from the
+  genesis-admin proposer (an active validator must not be able to race the canonical Phase-1
+  proposer — loosen with fork choice); `Slash` logs CRITICAL on supply-drift instead of silently
+  skipping; near-max-supply settlements are effectively fee-free by design (all-or-nothing
+  distribution, logged). Backlog: integer-ratio quorum (drop the float64 ceil), RFC 9381 ECVRF,
+  journal-based snapshots, two-node sync e2e.

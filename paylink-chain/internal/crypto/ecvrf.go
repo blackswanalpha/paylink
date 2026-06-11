@@ -17,6 +17,14 @@ import (
 //
 // Security: relies on the unforgeability of ED25519. An adversary cannot produce a valid
 // proof (signature) without the private key, and cannot predict the output without it.
+//
+// KNOWN LIMITATION (not RFC 9381): ed25519.Verify accepts signatures made with any
+// nonce, not just the RFC 8032 deterministic one — so the KEY HOLDER can grind many
+// valid (signature, output) pairs for the same input and pick the most favorable,
+// biasing stake-weighted sortition in their favor. Honest-signer uniqueness is
+// assumed. Replace with a real ECVRF (RFC 9381 ECVRF-EDWARDS25519-SHA512-TAI) before
+// committee selection carries economic weight. Verifiers MUST additionally bind the
+// proof's embedded pubkey to the validator's registered VRF key (see consensus pkg).
 type ECVRF struct {
 	privateKey ed25519.PrivateKey
 	publicKey  ed25519.PublicKey

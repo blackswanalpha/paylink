@@ -43,6 +43,34 @@ func VerifyWithAddress(hash types.Hash, sig []byte, pub *ecdsa.PublicKey, expect
 	return addr == expectedAddr
 }
 
+// VerifyTx authenticates a transaction end-to-end:
+//   - PubKey is present, parses as an uncompressed P-256 point, and derives tx.From;
+//   - tx.Hash equals SHA256(SignableBytes) (the declared hash isn't spoofed);
+//   - tx.Signature is a valid ECDSA signature over that hash.
+//
+// Every admission path (RPC, P2P) and block execution must pass before a
+// transaction can touch state.
+func VerifyTx(tx *types.Transaction) error {
+	if len(tx.PubKey) == 0 {
+		return fmt.Errorf("missing public key")
+	}
+	pub, err := UnmarshalPublicKey(tx.PubKey)
+	if err != nil {
+		return fmt.Errorf("invalid public key: %w", err)
+	}
+	if PubkeyToAddress(pub) != tx.From {
+		return fmt.Errorf("public key does not match from address %s", tx.From)
+	}
+	h := SHA256Hash(tx.SignableBytes())
+	if tx.Hash != h {
+		return fmt.Errorf("hash mismatch: declared %s, computed %s", tx.Hash, h)
+	}
+	if !Verify(h, tx.Signature, pub) {
+		return fmt.Errorf("invalid signature for %s", tx.From)
+	}
+	return nil
+}
+
 // MarshalPublicKey serializes a public key to uncompressed bytes (65 bytes: 0x04 || X || Y).
 func MarshalPublicKey(pub *ecdsa.PublicKey) []byte {
 	return elliptic.Marshal(pub.Curve, pub.X, pub.Y)

@@ -2,7 +2,9 @@ package consensus
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/paylink/paylink-chain/internal/chain"
@@ -26,7 +28,8 @@ type BlockProducer struct {
 	proposer   types.Address
 	signingKey []byte // private key bytes for signing blocks
 	eventBus   *events.Bus
-	p2pHost    p2pHost // optional P2P host for block broadcast
+	p2pHost    p2pHost     // optional P2P host for block broadcast
+	commitMu   *sync.Mutex // serializes commits with the follower BlockProcessor
 }
 
 // p2pHost is the subset of p2p.Host we need (avoids import cycle).
@@ -67,6 +70,12 @@ func (bp *BlockProducer) SetP2PHost(host p2pHost) {
 	bp.p2pHost = host
 }
 
+// SetCommitLock shares a mutex with the follower-side BlockProcessor so that local
+// production and peer-block application never execute/commit concurrently.
+func (bp *BlockProducer) SetCommitLock(mu *sync.Mutex) {
+	bp.commitMu = mu
+}
+
 // Start begins producing blocks at the configured interval.
 func (bp *BlockProducer) Start(ctx context.Context) {
 	ticker := time.NewTicker(bp.interval)
@@ -86,6 +95,17 @@ func (bp *BlockProducer) Start(ctx context.Context) {
 }
 
 func (bp *BlockProducer) produceBlock() {
+	// Phase 1 single proposer: only the canonical proposer produces blocks.
+	// Every other node runs as a follower and applies blocks via the BlockProcessor.
+	if bp.pov != nil && bp.proposer != bp.pov.Proposer() {
+		return
+	}
+
+	if bp.commitMu != nil {
+		bp.commitMu.Lock()
+		defer bp.commitMu.Unlock()
+	}
+
 	// Drain transactions from mempool
 	txs := bp.mempool.DrainForBlock(maxTxsPerBlock)
 
@@ -103,7 +123,9 @@ func (bp *BlockProducer) produceBlock() {
 		blockHeight = tip.Header.Height + 1
 	}
 
-	// Execute transactions
+	// Execute transactions on a snapshot: if the block fails to commit (or sign),
+	// state must roll back to exactly the pre-block state.
+	snapID := bp.state.Snapshot()
 	receipts := bp.executor.ExecuteBlock(txs, timestamp, blockHeight)
 
 	// Collect successful transactions and tag receipts
@@ -126,9 +148,28 @@ func (bp *BlockProducer) produceBlock() {
 		}
 	}
 
+	// All txs failed: nothing to commit (state already rolled back per tx).
+	if len(successTxs) == 0 {
+		bp.state.DiscardSnapshot(snapID)
+		bp.executor.DiscardEvents()
+		if err := bp.blockchain.StoreReceipts(receipts); err != nil {
+			log.Printf("Failed to store receipts: %v", err)
+		}
+		return
+	}
+
+	revert := func(reason string, err error) {
+		log.Printf("Block %d aborted (%s): %v", blockHeight, reason, err)
+		if rerr := bp.state.Revert(snapID); rerr != nil {
+			log.Printf("CRITICAL: state revert failed for block %d: %v", blockHeight, rerr)
+		}
+		bp.executor.DiscardEvents()
+		bp.mempool.ReinsertAll(successTxs)
+	}
+
 	// Compute state root and tx root
 	stateRoot := bp.state.ComputeStateRoot()
-	txRoot := computeTxRoot(successTxs)
+	txRoot := chain.ComputeTxRoot(successTxs)
 
 	// Get previous hash
 	prevHash := types.ZeroHash
@@ -152,32 +193,35 @@ func (bp *BlockProducer) produceBlock() {
 	// Compute block hash
 	block.Hash = pcrypto.SHA256Hash(block.HeaderBytes())
 
-	// Sign block
-	if bp.signingKey != nil {
-		key, err := pcrypto.UnmarshalPrivateKey(bp.signingKey)
-		if err == nil {
-			sig, err := pcrypto.Sign(block.Hash, key)
-			if err == nil {
-				block.Commit = types.BlockCommit{
-					ProposerAddr: bp.proposer,
-					Signature:    sig,
-				}
-			}
-		}
-	}
-
-	// Store block
-	if err := bp.blockchain.AddBlock(block); err != nil {
-		log.Printf("Failed to add block %d: %v", blockHeight, err)
-		// Reinsert transactions back to mempool
-		bp.mempool.ReinsertAll(successTxs)
+	// Sign block — mandatory: validators reject unsigned blocks, so producing one
+	// without a valid key would fork us off our own network.
+	if bp.signingKey == nil {
+		revert("no signing key", fmt.Errorf("block producer has no signing key"))
 		return
 	}
-
-	// Store receipts
-	if err := bp.blockchain.StoreReceipts(receipts); err != nil {
-		log.Printf("Failed to store receipts for block %d: %v", blockHeight, err)
+	key, err := pcrypto.UnmarshalPrivateKey(bp.signingKey)
+	if err != nil {
+		revert("invalid signing key", err)
+		return
 	}
+	sig, err := pcrypto.Sign(block.Hash, key)
+	if err != nil {
+		revert("signing failed", err)
+		return
+	}
+	block.Commit = types.BlockCommit{
+		ProposerAddr: bp.proposer,
+		PublicKey:    pcrypto.MarshalPublicKey(&key.PublicKey),
+		Signature:    sig,
+	}
+
+	// Commit block + receipts in one atomic batch
+	if err := bp.blockchain.CommitBlock(block, receipts); err != nil {
+		revert("commit failed", err)
+		return
+	}
+	bp.state.DiscardSnapshot(snapID)
+	bp.executor.FlushEvents(blockHeight)
 
 	log.Printf("Block %d produced: %d txs, hash: %s", blockHeight, len(successTxs), block.Hash)
 
@@ -201,16 +245,4 @@ func (bp *BlockProducer) produceBlock() {
 			})
 		bp.eventBus.Publish(evt)
 	}
-}
-
-// computeTxRoot computes the Merkle root of transaction hashes.
-func computeTxRoot(txs []types.Transaction) types.Hash {
-	if len(txs) == 0 {
-		return types.ZeroHash
-	}
-	var combined []byte
-	for _, tx := range txs {
-		combined = append(combined, tx.Hash[:]...)
-	}
-	return pcrypto.SHA256Hash(combined)
 }

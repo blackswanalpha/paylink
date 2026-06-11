@@ -4,12 +4,12 @@ import "github.com/paylink/paylink-chain/internal/types"
 
 // Key prefixes for DB namespacing.
 var (
-	PrefixBlock       = []byte("b/")  // b/{height} -> Block
-	PrefixBlockHash   = []byte("bh/") // bh/{hash} -> height
-	PrefixTx          = []byte("tx/") // tx/{hash} -> Transaction
-	PrefixReceipt     = []byte("r/")  // r/{txHash} -> TxReceipt
-	PrefixState       = []byte("s/")  // s/ -> serialized state
-	PrefixChainMeta   = []byte("m/")  // m/{key} -> chain metadata
+	PrefixBlock     = []byte("b/")  // b/{height} -> Block
+	PrefixBlockHash = []byte("bh/") // bh/{hash} -> height
+	PrefixTx        = []byte("tx/") // tx/{hash} -> Transaction
+	PrefixReceipt   = []byte("r/")  // r/{txHash} -> TxReceipt
+	PrefixState     = []byte("s/")  // s/ -> serialized state
+	PrefixChainMeta = []byte("m/")  // m/{key} -> chain metadata
 )
 
 // Key construction helpers

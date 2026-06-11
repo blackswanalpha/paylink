@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"math/big"
 
@@ -20,9 +21,9 @@ type CommitteeMember struct {
 
 // CommitteeSelector selects validator committees using VRF and stake weighting.
 type CommitteeSelector struct {
-	state           *state.StateDB
-	targetSize      int     // target committee size (e.g., 5)
-	quorumFraction  float64 // fraction needed for quorum (e.g., 0.6)
+	state          *state.StateDB
+	targetSize     int     // target committee size (e.g., 5)
+	quorumFraction float64 // fraction needed for quorum (e.g., 0.6)
 }
 
 // NewCommitteeSelector creates a new committee selector.
@@ -45,6 +46,12 @@ func NewCommitteeSelector(s *state.StateDB, targetSize int, quorumFraction float
 // A validator is eligible if: vrfOutput < threshold * (validatorStake / totalStake).
 //
 // The seed should be deterministic and unpredictable, e.g., SHA256(lastBlockHash || payLinkID).
+//
+// NOTE: this signature takes the validators' VRF PRIVATE keys, so it can only run
+// where those keys are held (tests / a single-node devnet). In the distributed
+// Phase 2 protocol each validator evaluates only its OWN VRF and gossips the proof;
+// peers then check it with VerifyCommitteeMembership. Do not ship multi-validator
+// committee selection on top of this function.
 func (cs *CommitteeSelector) SelectCommittee(seed types.Hash, vrfKeys map[types.Address]*pcrypto.ECVRF) []CommitteeMember {
 	validators := cs.state.GetActiveValidatorsWithStake()
 	if len(validators) == 0 {
@@ -85,21 +92,41 @@ func (cs *CommitteeSelector) SelectCommittee(seed types.Hash, vrfKeys map[types.
 	return committee
 }
 
-// VerifyCommitteeMembership verifies that a validator is a legitimate committee member
-// by checking their VRF proof and eligibility.
+// VerifyCommitteeMembership verifies that a validator is a legitimate committee member.
+// Everything that matters is sourced from STATE, never from the claimed member struct:
+// the proof's embedded pubkey must equal the validator's registered VRF key, and the
+// eligibility threshold uses the validator's staked amount as recorded on-chain — a
+// caller-supplied StakeWeight would let anyone inflate their selection probability.
 func (cs *CommitteeSelector) VerifyCommitteeMembership(
 	seed types.Hash,
 	member CommitteeMember,
-	totalStake uint64,
-	numValidators int,
 ) bool {
+	v := cs.state.GetValidator(member.Address)
+	if v == nil || !v.IsActive {
+		return false
+	}
+
+	registered := cs.state.GetVRFPublicKey(member.Address)
+	if len(registered) == 0 {
+		return false
+	}
+	proofPub, err := pcrypto.VRFProofPublicKey(member.VRFProof)
+	if err != nil || !bytes.Equal(proofPub, registered) {
+		return false
+	}
+
 	// Verify VRF proof
 	if !pcrypto.VerifyVRFProof(seed[:], member.VRFOutput, member.VRFProof) {
 		return false
 	}
 
-	// Check eligibility threshold
-	return isEligible(member.VRFOutput, member.StakeWeight, totalStake, numValidators, cs.targetSize)
+	// Eligibility threshold from on-chain stake
+	validators := cs.state.GetActiveValidatorsWithStake()
+	totalStake := uint64(0)
+	for _, av := range validators {
+		totalStake += av.StakedAmount
+	}
+	return isEligible(member.VRFOutput, v.StakedAmount, totalStake, len(validators), cs.targetSize)
 }
 
 // RequiredQuorum returns the minimum number of votes needed given a committee size.

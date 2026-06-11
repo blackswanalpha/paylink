@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"crypto/ecdsa"
 	"encoding/json"
 	"testing"
 	"time"
@@ -11,7 +12,10 @@ import (
 )
 
 func testGenesis() *types.GenesisConfig {
-	admin := types.HexToAddress("0x0000000000000000000000000000000000000001")
+	return testGenesisWithAdmin(types.HexToAddress("0x0000000000000000000000000000000000000001"))
+}
+
+func testGenesisWithAdmin(admin types.Address) *types.GenesisConfig {
 	return &types.GenesisConfig{
 		ChainID:             "test-chain",
 		AdminAddress:        admin,
@@ -36,6 +40,30 @@ func makeTx(txType types.TxType, from types.Address, nonce uint64, payload inter
 		Payload: data,
 	}
 	tx.Hash = crypto.SHA256Hash(tx.SignableBytes())
+	return tx
+}
+
+// genTestKey generates a P-256 key for a test actor and returns it with its derived address.
+func genTestKey(t *testing.T) (*ecdsa.PrivateKey, types.Address) {
+	t.Helper()
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	return key, crypto.PrivateKeyToAddress(key)
+}
+
+// makeSignedTx builds a fully signed transaction (PubKey + Hash + Signature) from key.
+// Required for ExecuteBlock tests, which enforce crypto.VerifyTx.
+func makeSignedTx(t *testing.T, txType types.TxType, key *ecdsa.PrivateKey, nonce uint64, payload interface{}) *types.Transaction {
+	t.Helper()
+	tx := makeTx(txType, crypto.PrivateKeyToAddress(key), nonce, payload)
+	tx.PubKey = crypto.MarshalPublicKey(&key.PublicKey)
+	sig, err := crypto.Sign(tx.Hash, key)
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	tx.Signature = sig
 	return tx
 }
 
@@ -535,21 +563,23 @@ func TestExecuteDistributeReward(t *testing.T) {
 }
 
 func TestExecuteBlockWithRevert(t *testing.T) {
-	genesis := testGenesis()
+	// ExecuteBlock enforces signatures, so build genesis around a real admin key.
+	adminKey, admin := genTestKey(t)
+	bobKey, bob := genTestKey(t)
+
+	genesis := testGenesisWithAdmin(admin)
 	s := state.NewStateDB(genesis)
 	exec := NewExecutor(s, nil)
 
-	admin := genesis.AdminAddress
-	bob := types.HexToAddress("0x0000000000000000000000000000000000000002")
 	now := time.Now().Unix()
 
 	txs := []types.Transaction{
 		// Valid transfer
-		*makeTx(types.TxTransfer, admin, 0, types.TransferPayload{To: bob, Amount: 1000}),
-		// Invalid transfer (bob has no balance yet for 2nd tx nonce)
-		*makeTx(types.TxTransfer, bob, 999, types.TransferPayload{To: admin, Amount: 5000}),
+		*makeSignedTx(t, types.TxTransfer, adminKey, 0, types.TransferPayload{To: bob, Amount: 1000}),
+		// Invalid transfer (bob has no balance yet for 2nd tx nonce): valid signature, bad nonce
+		*makeSignedTx(t, types.TxTransfer, bobKey, 999, types.TransferPayload{To: admin, Amount: 5000}),
 		// Another valid transfer
-		*makeTx(types.TxTransfer, admin, 1, types.TransferPayload{To: bob, Amount: 500}),
+		*makeSignedTx(t, types.TxTransfer, adminKey, 1, types.TransferPayload{To: bob, Amount: 500}),
 	}
 
 	receipts := exec.ExecuteBlock(txs, now, 1)

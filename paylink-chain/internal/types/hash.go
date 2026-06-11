@@ -32,12 +32,30 @@ func BytesToHash(b []byte) Hash {
 }
 
 // HexToHash converts a hex string (with or without 0x prefix) to a Hash.
+// Lenient: invalid input yields ZeroHash. External input (RPC) must use ParseHash.
 func HexToHash(s string) Hash {
 	if len(s) >= 2 && s[:2] == "0x" {
 		s = s[2:]
 	}
 	b, _ := hex.DecodeString(s)
 	return BytesToHash(b)
+}
+
+// ParseHash strictly parses a 32-byte 0x-hex string, rejecting malformed input
+// instead of silently aliasing it to ZeroHash.
+func ParseHash(s string) (Hash, error) {
+	raw := s
+	if len(raw) >= 2 && raw[:2] == "0x" {
+		raw = raw[2:]
+	}
+	b, err := hex.DecodeString(raw)
+	if err != nil {
+		return ZeroHash, fmt.Errorf("invalid hash %q: %w", s, err)
+	}
+	if len(b) != HashLength {
+		return ZeroHash, fmt.Errorf("invalid hash %q: got %d bytes, want %d", s, len(b), HashLength)
+	}
+	return BytesToHash(b), nil
 }
 
 // Bytes returns the hash as a byte slice.
@@ -86,12 +104,30 @@ func BytesToAddress(b []byte) Address {
 }
 
 // HexToAddress converts a hex string to an Address.
+// Lenient: invalid input yields ZeroAddress. External input (RPC) must use ParseAddress.
 func HexToAddress(s string) Address {
 	if len(s) >= 2 && s[:2] == "0x" {
 		s = s[2:]
 	}
 	b, _ := hex.DecodeString(s)
 	return BytesToAddress(b)
+}
+
+// ParseAddress strictly parses a 20-byte 0x-hex string, rejecting malformed input
+// instead of silently aliasing it to ZeroAddress.
+func ParseAddress(s string) (Address, error) {
+	raw := s
+	if len(raw) >= 2 && raw[:2] == "0x" {
+		raw = raw[2:]
+	}
+	b, err := hex.DecodeString(raw)
+	if err != nil {
+		return ZeroAddress, fmt.Errorf("invalid address %q: %w", s, err)
+	}
+	if len(b) != AddressLength {
+		return ZeroAddress, fmt.Errorf("invalid address %q: got %d bytes, want %d", s, len(b), AddressLength)
+	}
+	return BytesToAddress(b), nil
 }
 
 // Bytes returns the address as a byte slice.

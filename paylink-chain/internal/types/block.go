@@ -16,8 +16,12 @@ type BlockHeader struct {
 }
 
 // BlockCommit contains the proposer's signature over the block header.
+// PublicKey carries the proposer's uncompressed P-256 key (P-256 has no public-key
+// recovery); validators check PubkeyToAddress(PublicKey) == ProposerAddr before
+// verifying the signature over the block hash.
 type BlockCommit struct {
 	ProposerAddr Address `json:"proposer"`
+	PublicKey    []byte  `json:"pubKey,omitempty"`
 	Signature    []byte  `json:"signature"`
 }
 

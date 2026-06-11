@@ -1,7 +1,9 @@
 package fee
 
 import (
+	"bytes"
 	"fmt"
+	"sort"
 
 	"github.com/paylink/paylink-chain/internal/state"
 	"github.com/paylink/paylink-chain/internal/types"
@@ -43,13 +45,27 @@ func (d *Distributor) DistributeFees(fee FeeBreakdown, voters []types.Address) (
 		return nil, fmt.Errorf("no active voters with stake")
 	}
 
-	// Distribute validator rewards proportional to stake
+	// Pre-check the supply cap for the FULL mint (validators + treasury) so the
+	// distribution is all-or-nothing: a mid-loop mint failure would leave a partial
+	// payout inside an already-final settlement.
+	totalMint := fee.ValidatorReward + fee.TreasuryAmount
+	if d.state.TotalSupply()+totalMint > d.state.MaxSupply() {
+		return nil, fmt.Errorf("fee mint of %d would exceed max supply", totalMint)
+	}
+
+	// Distribute validator rewards proportional to stake.
+	// The list MUST be sorted: per-voter integer division and the remainder-to-last
+	// rule make payout amounts order-dependent, and map iteration order differs
+	// across nodes — unsorted iteration would diverge state roots.
 	var payouts []ValidatorPayout
 	distributed := uint64(0)
 	voterList := make([]types.Address, 0, len(voterStakes))
 	for addr := range voterStakes {
 		voterList = append(voterList, addr)
 	}
+	sort.Slice(voterList, func(i, j int) bool {
+		return bytes.Compare(voterList[i][:], voterList[j][:]) < 0
+	})
 
 	for i, addr := range voterList {
 		var reward uint64
@@ -79,9 +95,9 @@ func (d *Distributor) DistributeFees(fee FeeBreakdown, voters []types.Address) (
 		}
 	}
 
-	// Burn tokens
+	// Record the burn share (never minted — see RecordBurn)
 	if fee.BurnAmount > 0 {
-		d.state.BurnTokens(fee.BurnAmount)
+		d.state.RecordBurn(fee.BurnAmount)
 	}
 
 	return payouts, nil

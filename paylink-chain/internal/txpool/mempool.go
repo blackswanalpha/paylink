@@ -1,6 +1,7 @@
 package txpool
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"sync"
@@ -10,10 +11,10 @@ import (
 
 // Mempool holds pending transactions waiting to be included in a block.
 type Mempool struct {
-	mu       sync.RWMutex
-	pending  map[types.Hash]*types.Transaction // hash -> tx
-	byNonce  map[types.Address][]*types.Transaction // sender -> txs sorted by nonce
-	maxSize  int
+	mu      sync.RWMutex
+	pending map[types.Hash]*types.Transaction      // hash -> tx
+	byNonce map[types.Address][]*types.Transaction // sender -> txs sorted by nonce
+	maxSize int
 }
 
 // NewMempool creates a new mempool with the given max size.
@@ -92,15 +93,25 @@ func (m *Mempool) Pending() []*types.Transaction {
 }
 
 // DrainForBlock returns up to maxTxs transactions for block production and removes them.
+// Senders are visited in address order (map iteration would randomize which txs make
+// the block when it's full), with each sender's txs in nonce order.
 func (m *Mempool) DrainForBlock(maxTxs int) []types.Transaction {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	senders := make([]types.Address, 0, len(m.byNonce))
+	for from := range m.byNonce {
+		senders = append(senders, from)
+	}
+	sort.Slice(senders, func(i, j int) bool {
+		return bytes.Compare(senders[i][:], senders[j][:]) < 0
+	})
+
 	var result []types.Transaction
 	var toRemove []types.Hash
 
-	for _, txs := range m.byNonce {
-		for _, tx := range txs {
+	for _, from := range senders {
+		for _, tx := range m.byNonce[from] {
 			if len(result) >= maxTxs {
 				break
 			}

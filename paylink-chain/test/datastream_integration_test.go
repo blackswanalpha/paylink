@@ -223,6 +223,7 @@ func dsMakeTx(t *testing.T, txType types.TxType, from types.Address, nonce uint6
 	if err != nil {
 		t.Fatalf("unmarshal key: %v", err)
 	}
+	tx.PubKey = pcrypto.MarshalPublicKey(&key.PublicKey)
 	sig, err := pcrypto.Sign(tx.Hash, key)
 	if err != nil {
 		t.Fatalf("sign tx: %v", err)

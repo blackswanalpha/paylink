@@ -20,6 +20,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/paylink/paylink-chain/internal/chain"
+	pcrypto "github.com/paylink/paylink-chain/internal/crypto"
 	"github.com/paylink/paylink-chain/internal/types"
 )
 
@@ -28,6 +29,15 @@ const (
 	txTopic      = "/linkm/txs/1.0.0"
 	syncProtocol = "/linkm/sync/1.0.0"
 	syncBatchMax = 100
+
+	// syncStreamTimeout bounds how long either side of a sync stream may take —
+	// without it a slow or stalled peer pins the stream (and its goroutine) forever.
+	syncStreamTimeout = 30 * time.Second
+
+	// maxSyncRequestBytes / maxSyncResponseBytes cap stream reads. An unbounded
+	// io.ReadAll lets a malicious peer OOM the node.
+	maxSyncRequestBytes  = 4 * 1024
+	maxSyncResponseBytes = 64 * 1024 * 1024
 )
 
 // LibP2PHost is a real P2P host using libp2p with GossipSub and Kademlia DHT.
@@ -293,6 +303,10 @@ func (lh *LibP2PHost) handleBlocks() {
 			continue
 		}
 
+		// Recompute the hash before dedup — trusting the claimed hash would let a
+		// peer poison the seen-cache with a victim block's hash on junk content.
+		bm.Block.Hash = pcrypto.SHA256Hash(bm.Block.HeaderBytes())
+
 		// Deduplicate
 		if lh.hasSeen(bm.Block.Hash) {
 			continue
@@ -328,6 +342,9 @@ func (lh *LibP2PHost) handleTxs() {
 			continue
 		}
 
+		// Recompute the hash before dedup — same poisoning concern as blocks.
+		tm.Transaction.Hash = pcrypto.SHA256Hash(tm.Transaction.SignableBytes())
+
 		if lh.hasSeen(tm.Transaction.Hash) {
 			continue
 		}
@@ -341,9 +358,10 @@ func (lh *LibP2PHost) handleTxs() {
 
 func (lh *LibP2PHost) handleSyncRequest(stream network.Stream) {
 	defer stream.Close()
+	_ = stream.SetDeadline(time.Now().Add(syncStreamTimeout))
 
 	var req SyncRequest
-	if err := json.NewDecoder(stream).Decode(&req); err != nil {
+	if err := json.NewDecoder(io.LimitReader(stream, maxSyncRequestBytes)).Decode(&req); err != nil {
 		return
 	}
 
@@ -372,6 +390,7 @@ func (lh *LibP2PHost) syncFromPeer(peerID peer.ID, localHeight uint64) error {
 		return fmt.Errorf("open stream: %w", err)
 	}
 	defer stream.Close()
+	_ = stream.SetDeadline(time.Now().Add(syncStreamTimeout))
 
 	// Request blocks starting from our height + 1
 	req := SyncRequest{
@@ -386,7 +405,7 @@ func (lh *LibP2PHost) syncFromPeer(peerID peer.ID, localHeight uint64) error {
 	stream.CloseWrite()
 
 	var resp SyncResponse
-	data, err := io.ReadAll(stream)
+	data, err := io.ReadAll(io.LimitReader(stream, maxSyncResponseBytes))
 	if err != nil {
 		return fmt.Errorf("read response: %w", err)
 	}

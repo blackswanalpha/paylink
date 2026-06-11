@@ -19,7 +19,7 @@ import (
 func TestIntegration_OwnershipOnCreate(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-OWN-001"))
 
@@ -83,8 +83,8 @@ func TestIntegration_OwnershipOnCreate(t *testing.T) {
 func TestIntegration_TransferOwnership(t *testing.T) {
 	node := startTestNode(t)
 
-	alice := types.HexToAddress("0x000000000000000000000000000000000000a11c")
-	bob := types.HexToAddress("0x0000000000000000000000000000000000000b0b")
+	alice := node.newActor(t)
+	bob := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-XFER-001"))
 
@@ -155,8 +155,8 @@ func TestIntegration_TransferOwnership(t *testing.T) {
 func TestIntegration_ApprovalAndTransfer(t *testing.T) {
 	node := startTestNode(t)
 
-	alice := types.HexToAddress("0x000000000000000000000000000000000000a11c")
-	bob := types.HexToAddress("0x0000000000000000000000000000000000000b0b")
+	alice := node.newActor(t)
+	bob := node.newActor(t)
 	charlie := types.HexToAddress("0x00000000000000000000000000000000000c4a12")
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-APPROVE-001"))
@@ -210,9 +210,9 @@ func TestIntegration_ApprovalAndTransfer(t *testing.T) {
 func TestIntegration_OperatorTransfer(t *testing.T) {
 	node := startTestNode(t)
 
-	alice := types.HexToAddress("0x000000000000000000000000000000000000a11c")
-	operator := types.HexToAddress("0x000000000000000000000000000000000000000f")
-	bob := types.HexToAddress("0x0000000000000000000000000000000000000b0b")
+	alice := node.newActor(t)
+	operator := node.newActor(t)
+	bob := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-OPERATOR-001"))
 
@@ -263,8 +263,8 @@ func TestIntegration_OperatorTransfer(t *testing.T) {
 func TestIntegration_CancelAfterTransfer(t *testing.T) {
 	node := startTestNode(t)
 
-	alice := types.HexToAddress("0x000000000000000000000000000000000000a11c")
-	bob := types.HexToAddress("0x0000000000000000000000000000000000000b0b")
+	alice := node.newActor(t)
+	bob := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-CANCEL-OWN-001"))
 
@@ -311,7 +311,7 @@ func mustMarshalJSON(v interface{}) json.RawMessage {
 func TestIntegration_CreateWithRules(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-RULES-001"))
 
@@ -362,8 +362,8 @@ func TestIntegration_CreateWithRules(t *testing.T) {
 func TestIntegration_MaxTransfersRuleBlocks(t *testing.T) {
 	node := startTestNode(t)
 
-	alice := types.HexToAddress("0x000000000000000000000000000000000000a11c")
-	bob := types.HexToAddress("0x0000000000000000000000000000000000000b0b")
+	alice := node.newActor(t)
+	bob := node.newActor(t)
 	charlie := types.HexToAddress("0x00000000000000000000000000000000000c4a12")
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-MAXRULE-001"))
@@ -402,11 +402,14 @@ func TestIntegration_MaxTransfersRuleBlocks(t *testing.T) {
 		t.Fatalf("TransferCount: expected 1, got %d", pl.TransferCount)
 	}
 
-	// Second transfer: bob → charlie (should be blocked by MaxTransfers rule)
-	sendTx(t, node, types.TxTransferPayLink, bob, 0, types.TransferPayLinkPayload{
+	// Second transfer: bob → charlie (should be blocked by MaxTransfers rule).
+	// A blocked tx doesn't produce a block, so wait on its receipt instead.
+	blockedHash := sendTx(t, node, types.TxTransferPayLink, bob, 0, types.TransferPayLinkPayload{
 		PayLinkID: plID, To: charlie,
 	})
-	waitForBlock(t, node, 4, 3*time.Second)
+	if r := waitForReceipt(t, node, blockedHash, 3*time.Second); r.Success {
+		t.Fatal("Second transfer should be blocked by MaxTransfers rule")
+	}
 
 	// Owner should still be bob (transfer rejected)
 	pl = getPayLink(t, node, plID)
@@ -422,8 +425,8 @@ func TestIntegration_MaxTransfersRuleBlocks(t *testing.T) {
 func TestIntegration_ReceiverWhitelistRule(t *testing.T) {
 	node := startTestNode(t)
 
-	alice := types.HexToAddress("0x000000000000000000000000000000000000a11c")
-	bob := types.HexToAddress("0x0000000000000000000000000000000000000b0b")
+	alice := node.newActor(t)
+	bob := node.newActor(t)
 	charlie := types.HexToAddress("0x00000000000000000000000000000000000c4a12")
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-RCVWL-001"))
@@ -451,11 +454,14 @@ func TestIntegration_ReceiverWhitelistRule(t *testing.T) {
 	})
 	waitForBlock(t, node, 2, 3*time.Second)
 
-	// Try transfer to charlie (not whitelisted) -- should fail
-	sendTx(t, node, types.TxTransferPayLink, alice, 1, types.TransferPayLinkPayload{
+	// Try transfer to charlie (not whitelisted) -- should fail.
+	// A blocked tx doesn't produce a block, so wait on its receipt instead.
+	blockedHash := sendTx(t, node, types.TxTransferPayLink, alice, 1, types.TransferPayLinkPayload{
 		PayLinkID: plID, To: charlie,
 	})
-	waitForBlock(t, node, 3, 3*time.Second)
+	if r := waitForReceipt(t, node, blockedHash, 3*time.Second); r.Success {
+		t.Fatal("Transfer to non-whitelisted should be blocked")
+	}
 
 	pl := getPayLink(t, node, plID)
 	if pl.Owner != alice.Hex() {
@@ -467,7 +473,7 @@ func TestIntegration_ReceiverWhitelistRule(t *testing.T) {
 	sendTx(t, node, types.TxTransferPayLink, alice, 1, types.TransferPayLinkPayload{
 		PayLinkID: plID, To: bob,
 	})
-	waitForBlock(t, node, 4, 3*time.Second)
+	waitForBlock(t, node, 3, 3*time.Second)
 
 	pl = getPayLink(t, node, plID)
 	if pl.Owner != bob.Hex() {
@@ -479,8 +485,8 @@ func TestIntegration_ReceiverWhitelistRule(t *testing.T) {
 func TestIntegration_AddressWhitelistCancelRule(t *testing.T) {
 	node := startTestNode(t)
 
-	alice := types.HexToAddress("0x000000000000000000000000000000000000a11c")
-	bob := types.HexToAddress("0x0000000000000000000000000000000000000b0b")
+	alice := node.newActor(t)
+	bob := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-ADDRWL-001"))
 
@@ -513,11 +519,14 @@ func TestIntegration_AddressWhitelistCancelRule(t *testing.T) {
 	})
 	waitForBlock(t, node, 3, 3*time.Second)
 
-	// Bob (owner) tries to cancel -- should be blocked by AddressWhitelist
-	sendTx(t, node, types.TxCancelPayLink, bob, 0, types.CancelPayLinkPayload{
+	// Bob (owner) tries to cancel -- should be blocked by AddressWhitelist.
+	// A blocked tx doesn't produce a block, so wait on its receipt instead.
+	blockedHash := sendTx(t, node, types.TxCancelPayLink, bob, 0, types.CancelPayLinkPayload{
 		PayLinkID: plID,
 	})
-	waitForBlock(t, node, 4, 3*time.Second)
+	if r := waitForReceipt(t, node, blockedHash, 3*time.Second); r.Success {
+		t.Fatal("Cancel by non-whitelisted should be blocked")
+	}
 
 	pl := getPayLink(t, node, plID)
 	if pl.Status != "CREATED" {
@@ -528,7 +537,7 @@ func TestIntegration_AddressWhitelistCancelRule(t *testing.T) {
 	sendTx(t, node, types.TxCancelPayLink, alice, 2, types.CancelPayLinkPayload{
 		PayLinkID: plID,
 	})
-	waitForBlock(t, node, 5, 3*time.Second)
+	waitForBlock(t, node, 4, 3*time.Second)
 
 	pl = getPayLink(t, node, plID)
 	if pl.Status != "CANCELLED" {
@@ -540,8 +549,8 @@ func TestIntegration_AddressWhitelistCancelRule(t *testing.T) {
 func TestIntegration_FullLifecycleWithOwnershipAndRules(t *testing.T) {
 	node := startTestNode(t)
 
-	alice := types.HexToAddress("0x000000000000000000000000000000000000a11c")
-	bob := types.HexToAddress("0x0000000000000000000000000000000000000b0b")
+	alice := node.newActor(t)
+	bob := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-FULL-001"))
 	proofHash := pcrypto.SHA256Hash([]byte("mpesa-tx-FULL-001"))
@@ -554,9 +563,9 @@ func TestIntegration_FullLifecycleWithOwnershipAndRules(t *testing.T) {
 	rulesJSON, _ := json.Marshal(ruleSet)
 
 	// Setup: fund alice and 3 validators
-	v1 := types.HexToAddress("0x0000000000000000000000000000000000000010")
-	v2 := types.HexToAddress("0x0000000000000000000000000000000000000011")
-	v3 := types.HexToAddress("0x0000000000000000000000000000000000000012")
+	v1 := node.newActor(t)
+	v2 := node.newActor(t)
+	v3 := node.newActor(t)
 
 	nonce := uint64(0)
 	sendTx(t, node, types.TxTransfer, node.adminAddr, nonce, types.TransferPayload{To: alice, Amount: 10_000})
@@ -620,11 +629,14 @@ func TestIntegration_FullLifecycleWithOwnershipAndRules(t *testing.T) {
 		t.Fatalf("Owner unchanged after settlement: expected %s, got %s", bob.Hex(), pl.Owner)
 	}
 
-	// Transfer should fail on VERIFIED paylink
-	sendTx(t, node, types.TxTransferPayLink, bob, 0, types.TransferPayLinkPayload{
+	// Transfer should fail on VERIFIED paylink.
+	// A failed tx doesn't produce a block, so wait on its receipt instead.
+	failedHash := sendTx(t, node, types.TxTransferPayLink, bob, 0, types.TransferPayLinkPayload{
 		PayLinkID: plID, To: alice,
 	})
-	waitForBlock(t, node, 6, 3*time.Second)
+	if r := waitForReceipt(t, node, failedHash, 3*time.Second); r.Success {
+		t.Fatal("Transfer on VERIFIED paylink should fail")
+	}
 
 	pl = getPayLink(t, node, plID)
 	if pl.Owner != bob.Hex() {
@@ -636,7 +648,7 @@ func TestIntegration_FullLifecycleWithOwnershipAndRules(t *testing.T) {
 func TestIntegration_MultiplePayLinksEnumeration(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 
 	plID1 := pcrypto.SHA256Hash([]byte("PLK-ENUM-001"))
@@ -683,8 +695,8 @@ func TestIntegration_MultiplePayLinksEnumeration(t *testing.T) {
 func TestIntegration_NoRulesUnchangedBehavior(t *testing.T) {
 	node := startTestNode(t)
 
-	alice := types.HexToAddress("0x000000000000000000000000000000000000a11c")
-	bob := types.HexToAddress("0x0000000000000000000000000000000000000b0b")
+	alice := node.newActor(t)
+	bob := node.newActor(t)
 	charlie := types.HexToAddress("0x00000000000000000000000000000000000c4a12")
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	plID := pcrypto.SHA256Hash([]byte("PLK-NORULE-001"))

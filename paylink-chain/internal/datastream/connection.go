@@ -90,11 +90,15 @@ func (c *Conn) writePump() {
 				continue
 			}
 
-			evtJSON, _ := json.Marshal(evt)
+			evtJSON, err := json.Marshal(evt)
+			if err != nil {
+				log.Printf("WS event marshal error: %v", err)
+				continue
+			}
 			msg := ServerMessage{Type: "event", Event: evtJSON}
 
 			writeCtx, writeCancel := context.WithTimeout(c.ctx, writeTimeout)
-			err := wsjson.Write(writeCtx, c.ws, msg)
+			err = wsjson.Write(writeCtx, c.ws, msg)
 			writeCancel()
 			if err != nil {
 				log.Printf("WS write error: %v", err)

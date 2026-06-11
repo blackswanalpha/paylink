@@ -1,7 +1,10 @@
 package state
 
 import (
+	"bytes"
 	"fmt"
+	"log"
+	"sort"
 
 	"github.com/paylink/paylink-chain/internal/types"
 )
@@ -142,7 +145,10 @@ func (s *StateDB) CancelWithdrawal(addr types.Address) error {
 	return nil
 }
 
-// Slash reduces a validator's stake by the given amount.
+// Slash reduces a validator's stake by the given amount. Slashed tokens are
+// destroyed: total supply and totalBurned are adjusted so supply accounting stays
+// consistent with the sum of balances and stakes (staked tokens left an account
+// when staked, so removing them from the stake must remove them from supply).
 func (s *StateDB) Slash(addr types.Address, amount uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -158,6 +164,15 @@ func (s *StateDB) Slash(addr types.Address, amount uint64) error {
 
 	v.StakedAmount -= amount
 	v.TotalSlashed += amount
+	if s.totalSupply < amount {
+		// Supply smaller than a single stake means accounting already drifted —
+		// surface it loudly instead of silently widening the gap.
+		log.Printf("CRITICAL: slash of %d exceeds total supply %d — supply accounting drift", amount, s.totalSupply)
+		s.totalSupply = 0
+	} else {
+		s.totalSupply -= amount
+	}
+	s.totalBurned += amount
 
 	// Deactivate if below minimum
 	if v.StakedAmount < s.minimumStake {
@@ -283,7 +298,9 @@ func (s *StateDB) GetActiveValidatorsWithStake() []types.ValidatorStakeInfo {
 	return result
 }
 
-// GetVoters returns all validators who voted on a given PayLink.
+// GetVoters returns all validators who voted on a given PayLink, sorted by address.
+// The order must be deterministic: callers (fee distribution, rules evaluation) feed
+// it into consensus-relevant state.
 func (s *StateDB) GetVoters(plId types.Hash) []types.Address {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -294,5 +311,8 @@ func (s *StateDB) GetVoters(plId types.Hash) []types.Address {
 			voters = append(voters, key.Validator)
 		}
 	}
+	sort.Slice(voters, func(i, j int) bool {
+		return bytes.Compare(voters[i][:], voters[j][:]) < 0
+	})
 	return voters
 }

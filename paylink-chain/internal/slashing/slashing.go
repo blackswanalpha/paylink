@@ -11,9 +11,9 @@ import (
 
 // Evidence types for slashing offenses.
 const (
-	EvidenceDoubleSign   = "double_sign"
-	EvidenceEquivocate   = "equivocation"
-	EvidenceLiveness     = "liveness"
+	EvidenceDoubleSign = "double_sign"
+	EvidenceEquivocate = "equivocation"
+	EvidenceLiveness   = "liveness"
 )
 
 // Slash percentages (of current stake).
@@ -49,10 +49,14 @@ type LivenessEvidence struct {
 }
 
 // SlashAction describes the resulting penalty from processing evidence.
+// EvidenceID identifies the underlying OFFENSE (not the submitted bytes): the same
+// double-sign reported twice — even re-encoded — yields the same ID, so the executor
+// can reject replays.
 type SlashAction struct {
-	Validator types.Address `json:"validator"`
-	Amount    uint64        `json:"amount"`
-	Reason    string        `json:"reason"`
+	Validator  types.Address `json:"validator"`
+	Amount     uint64        `json:"amount"`
+	Reason     string        `json:"reason"`
+	EvidenceID types.Hash    `json:"evidenceId"`
 }
 
 // SlashingDetector validates evidence and computes slash amounts.
@@ -82,7 +86,10 @@ func (sd *SlashingDetector) ProcessEvidence(
 	case EvidenceEquivocate:
 		return sd.processEquivocation(validator, v, rawData)
 	case EvidenceLiveness:
-		return sd.processLiveness(validator, v, rawData)
+		// Liveness evidence carries no cryptographic proof — accepting it would let
+		// anyone slash any validator by claiming missed selections. Rejected until a
+		// verifiable liveness protocol exists.
+		return nil, fmt.Errorf("liveness evidence is not accepted: claims are not verifiable")
 	default:
 		return nil, fmt.Errorf("unknown evidence type: %s", evidenceType)
 	}
@@ -126,9 +133,10 @@ func (sd *SlashingDetector) processDoubleSign(
 	}
 
 	return &SlashAction{
-		Validator: validator,
-		Amount:    slashAmount,
-		Reason:    fmt.Sprintf("double-sign at height %d", ev.Height),
+		Validator:  validator,
+		Amount:     slashAmount,
+		Reason:     fmt.Sprintf("double-sign at height %d", ev.Height),
+		EvidenceID: doubleSignEvidenceID(validator, ev.Height),
 	}, nil
 }
 
@@ -180,41 +188,35 @@ func (sd *SlashingDetector) processEquivocation(
 	}
 
 	return &SlashAction{
-		Validator: validator,
-		Amount:    slashAmount,
-		Reason:    fmt.Sprintf("VRF equivocation on seed %s", ev.Seed.Hex()),
+		Validator:  validator,
+		Amount:     slashAmount,
+		Reason:     fmt.Sprintf("VRF equivocation on seed %s", ev.Seed.Hex()),
+		EvidenceID: equivocationEvidenceID(validator, ev.Seed),
 	}, nil
 }
 
-func (sd *SlashingDetector) processLiveness(
-	validator types.Address,
-	v *types.ValidatorInfo,
-	rawData json.RawMessage,
-) (*SlashAction, error) {
-	var ev LivenessEvidence
-	if err := json.Unmarshal(rawData, &ev); err != nil {
-		return nil, fmt.Errorf("invalid liveness evidence: %w", err)
+// doubleSignEvidenceID derives the canonical offense identity for a double-sign:
+// one slash per validator per height, regardless of how the evidence is encoded.
+func doubleSignEvidenceID(validator types.Address, height uint64) types.Hash {
+	buf := make([]byte, 0, 2+20+8)
+	buf = append(buf, "ds"...)
+	buf = append(buf, validator[:]...)
+	var h [8]byte
+	for i := 0; i < 8; i++ {
+		h[i] = byte(height >> (56 - 8*i))
 	}
+	buf = append(buf, h[:]...)
+	return pcrypto.SHA256Hash(buf)
+}
 
-	if ev.MissedCount == 0 {
-		return nil, fmt.Errorf("missed count must be > 0")
-	}
-
-	totalPct := ev.MissedCount * LivenessSlashPct
-	if totalPct > 100 {
-		totalPct = 100
-	}
-
-	slashAmount := v.StakedAmount * totalPct / 100
-	if slashAmount == 0 {
-		slashAmount = 1
-	}
-
-	return &SlashAction{
-		Validator: validator,
-		Amount:    slashAmount,
-		Reason:    fmt.Sprintf("liveness failure: %d missed from height %d to %d", ev.MissedCount, ev.StartHeight, ev.EndHeight),
-	}, nil
+// equivocationEvidenceID derives the canonical offense identity for VRF
+// equivocation: one slash per validator per seed.
+func equivocationEvidenceID(validator types.Address, seed types.Hash) types.Hash {
+	buf := make([]byte, 0, 2+20+32)
+	buf = append(buf, "eq"...)
+	buf = append(buf, validator[:]...)
+	buf = append(buf, seed[:]...)
+	return pcrypto.SHA256Hash(buf)
 }
 
 // vrfOutputFromProof re-derives the VRF output from a proof.

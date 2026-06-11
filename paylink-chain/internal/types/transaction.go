@@ -5,25 +5,30 @@ import (
 	"fmt"
 )
 
+// MaxTxPayloadBytes caps a transaction payload at every admission point (RPC, P2P).
+// The largest legitimate payload (CreatePayLink with a full rule set) is well under
+// 4KB; 32KB leaves headroom without letting clients bloat blocks.
+const MaxTxPayloadBytes = 32 * 1024
+
 // TxType identifies the type of transaction.
 type TxType uint8
 
 const (
-	TxCreatePayLink      TxType = 1
-	TxSubmitValidation   TxType = 2
-	TxCancelPayLink      TxType = 3
-	TxFailPayLink        TxType = 4  // admin only
-	TxTransfer           TxType = 5
-	TxStake              TxType = 6
-	TxInitiateUnstake    TxType = 7
-	TxCompleteUnstake    TxType = 8
-	TxSlash              TxType = 9  // admin only
-	TxDistributeReward   TxType = 10 // admin only
-	TxRegisterVRFKey     TxType = 11 // validator registers VRF public key
-	TxSubmitEvidence     TxType = 12 // anyone submits slashing evidence
-	TxTransferPayLink    TxType = 13 // owner transfers paylink to new owner
-	TxApprovePayLink     TxType = 14 // owner approves address for single paylink
-	TxSetApprovalForAll  TxType = 15 // owner approves operator for all their paylinks
+	TxCreatePayLink     TxType = 1
+	TxSubmitValidation  TxType = 2
+	TxCancelPayLink     TxType = 3
+	TxFailPayLink       TxType = 4 // admin only
+	TxTransfer          TxType = 5
+	TxStake             TxType = 6
+	TxInitiateUnstake   TxType = 7
+	TxCompleteUnstake   TxType = 8
+	TxSlash             TxType = 9  // admin only
+	TxDistributeReward  TxType = 10 // admin only
+	TxRegisterVRFKey    TxType = 11 // validator registers VRF public key
+	TxSubmitEvidence    TxType = 12 // anyone submits slashing evidence
+	TxTransferPayLink   TxType = 13 // owner transfers paylink to new owner
+	TxApprovePayLink    TxType = 14 // owner approves address for single paylink
+	TxSetApprovalForAll TxType = 15 // owner approves operator for all their paylinks
 )
 
 func (t TxType) String() string {
@@ -64,11 +69,17 @@ func (t TxType) String() string {
 }
 
 // Transaction represents a signed transaction on the PayLink chain.
+//
+// PubKey carries the sender's uncompressed P-256 public key (65 bytes: 0x04 || X || Y).
+// P-256 ECDSA has no public-key recovery, so the key must travel with the transaction;
+// it is bound to From by the address derivation check (PubkeyToAddress(PubKey) == From),
+// which is why PubKey does not need to be covered by SignableBytes.
 type Transaction struct {
 	Type      TxType          `json:"type"`
 	From      Address         `json:"from"`
 	Nonce     uint64          `json:"nonce"`
 	Payload   json.RawMessage `json:"payload"`
+	PubKey    []byte          `json:"pubKey,omitempty"`
 	Signature []byte          `json:"signature"`
 	Hash      Hash            `json:"hash"`
 }

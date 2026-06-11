@@ -147,11 +147,8 @@ func TestCommitteeSelector_VRFProofsVerifiable(t *testing.T) {
 
 	committee := cs.SelectCommittee(seed, vrfKeys)
 
-	totalStake := s.TotalStaked()
-	numValidators := s.ActiveValidatorCount()
-
 	for _, m := range committee {
-		if !cs.VerifyCommitteeMembership(seed, m, totalStake, numValidators) {
+		if !cs.VerifyCommitteeMembership(seed, m) {
 			t.Errorf("failed to verify committee membership for %s", m.Address)
 		}
 	}
@@ -202,11 +199,9 @@ func TestCommitteeSelector_VerifyRejectsWrongSeed(t *testing.T) {
 	}
 
 	wrongSeed := pcrypto.SHA256Hash([]byte("wrong-seed"))
-	totalStake := s.TotalStaked()
-	numValidators := s.ActiveValidatorCount()
 
 	for _, m := range committee {
-		if cs.VerifyCommitteeMembership(wrongSeed, m, totalStake, numValidators) {
+		if cs.VerifyCommitteeMembership(wrongSeed, m) {
 			t.Error("should reject committee membership with wrong seed")
 		}
 	}
@@ -224,16 +219,13 @@ func TestCommitteeSelector_VerifyRejectsFakeProof(t *testing.T) {
 		t.Skip("no committee members selected")
 	}
 
-	totalStake := s.TotalStaked()
-	numValidators := s.ActiveValidatorCount()
-
 	// Tamper with the first member's proof
 	fake := committee[0]
 	fake.VRFProof = make([]byte, len(committee[0].VRFProof))
 	copy(fake.VRFProof, committee[0].VRFProof)
 	fake.VRFProof[ed25519.PublicKeySize+5] ^= 0xFF
 
-	if cs.VerifyCommitteeMembership(seed, fake, totalStake, numValidators) {
+	if cs.VerifyCommitteeMembership(seed, fake) {
 		t.Error("should reject fake proof")
 	}
 }
