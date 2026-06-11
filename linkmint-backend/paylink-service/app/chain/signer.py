@@ -3,12 +3,15 @@
 The lVM uses **NIST P-256** ECDSA (``paylink-chain/internal/crypto/keys.go``):
   - sign the 32-byte SHA-256 digest of ``SignableBytes``; signature is raw ``r||s`` (64 bytes),
     base64-encoded on the wire (Go marshals ``[]byte`` as base64);
+  - the tx carries ``pubKey`` = the uncompressed public key (65 bytes: ``0x04 || X || Y``,
+    base64) — P-256 has no key recovery, and the chain checks the key derives ``From``;
   - address = last 20 bytes of **legacy Keccak-256** of the uncompressed pubkey ``X||Y``;
   - the private key is the big-endian ``D`` scalar (same hex format as ``paylinkd --privkey``).
 
-The chain does **not yet verify** tx signatures (ADR-005) — ``UnsignedSigner`` is a valid fallback
-that still supplies a ``From`` address. The seam lets a future client-signed flow (SDK / work05)
-swap the implementation without touching the service.
+The chain **verifies signatures at admission and in block execution** (supersedes ADR-005):
+``UnsignedSigner`` transactions are now REJECTED by the chain — it remains only so a deployment
+can boot without a key for non-chain flows. The seam lets a future client-signed flow
+(SDK / work05) swap the implementation without touching the service.
 """
 
 from __future__ import annotations
@@ -41,6 +44,9 @@ class Signer(Protocol):
     @property
     def address(self) -> str: ...
 
+    @property
+    def public_key_b64(self) -> str: ...
+
     def sign_digest(self, digest: bytes) -> str: ...
 
 
@@ -50,6 +56,12 @@ class ServiceKeySigner:
     def __init__(self, private_key: ec.EllipticCurvePrivateKey) -> None:
         self._private_key = private_key
         self._address = address_from_public_key(private_key.public_key())
+        self._public_key_b64 = base64.standard_b64encode(
+            private_key.public_key().public_bytes(
+                serialization.Encoding.X962,
+                serialization.PublicFormat.UncompressedPoint,
+            )
+        ).decode()
 
     @classmethod
     def from_hex(cls, key_hex: str) -> ServiceKeySigner:
@@ -64,6 +76,10 @@ class ServiceKeySigner:
     def address(self) -> str:
         return self._address
 
+    @property
+    def public_key_b64(self) -> str:
+        return self._public_key_b64
+
     def sign_digest(self, digest: bytes) -> str:
         der = self._private_key.sign(digest, ec.ECDSA(utils.Prehashed(hashes.SHA256())))
         r, s = utils.decode_dss_signature(der)
@@ -72,7 +88,15 @@ class ServiceKeySigner:
 
 
 class UnsignedSigner(ServiceKeySigner):
-    """Supplies a ``From`` address but an empty signature (forward-compat fallback)."""
+    """Supplies a ``From`` address but no signature/pubkey.
+
+    The chain now REJECTS such transactions — only useful for booting without a key
+    when the chain flow is disabled.
+    """
+
+    @property
+    def public_key_b64(self) -> str:
+        return ""
 
     def sign_digest(self, digest: bytes) -> str:
         return ""
