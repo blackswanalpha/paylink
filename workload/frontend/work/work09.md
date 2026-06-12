@@ -1,6 +1,6 @@
 # work09 — Auth (login / register / forgot / MFA)
 
-- **Status:** todo
+- **Status:** done
 - **Owner:** service-builder
 - **Depends on:** 03, 04, 08 · backend [work09](../../work/work09.md)
 - **Flow:** [flow09](../flow/flow09.md)
@@ -38,11 +38,11 @@ Every authenticated surface (account, dashboard, admin, dev portal) needs a real
   fallback for demo routes only).
 
 ## Acceptance criteria
-- [ ] Register → login → authenticated session works through the SDK; protected routes guard on it.
-- [ ] MFA challenge appears when required; TOTP enroll shows the otpauth QR and verifies.
-- [ ] Refresh is transparent; a detected refresh-reuse forces re-login (401 path via work04).
-- [ ] Validation + envelope errors surfaced; no `any`; `typecheck`/`lint`/`build` green.
-- [ ] Passes the **App** checklist + [frontendfeature.md §7](../../../frontendfeature.md).
+- [x] Register → login → authenticated session works through the SDK; protected routes guard on it.
+- [x] MFA challenge appears when required; TOTP enroll shows the otpauth QR and verifies.
+- [x] Refresh is transparent; a detected refresh-reuse forces re-login (401 path via work04).
+- [x] Validation + envelope errors surfaced; no `any`; `typecheck`/`lint`/`build` green.
+- [x] Passes the **App** checklist + [frontendfeature.md §7](../../../frontendfeature.md).
 
 ## Verification
 [../../verification.md](../../verification.md) → "App" + "Full stack": against the live stack,
@@ -50,3 +50,17 @@ register→login→`/account`; enable MFA, log out, log in → MFA challenge; fo
 
 ## Notes / log
 - Depends on work08 (SDK). The dev-JWT mint stays only for the demo wizard at `/`.
+- **Done (landed in `36e0e48`, status synced 2026-06-12 audit).** Routes `/login`, `/register`,
+  `/forgot-password`, `/reset-password`; MFA challenge inline in `LoginForm` (401 `MFA_REQUIRED`
+  handled via `reportError(err, { silent: true })` so the global reauth overlay never double-fires);
+  TOTP enroll/verify in `MfaEnrollModal` with the otpauth QR via `QRBlock` + copyable secret.
+  Session foundation: httpOnly refresh cookie via `app/api/auth/*` route handlers, in-memory access
+  token with single-flight `getAccessToken` (`lib/authClient.ts`), `createAuthedLinkMintClient`,
+  `ProtectedRoute`/`useRequireAuth` guard (redirects to `/login?next=…`). Refresh-reuse → identity
+  revokes the whole session family → `clearSession()` → work04 401 re-auth path. Dev HS256 mint
+  (`lib/jwt.ts`) kept for the demo wizard + dashboard only.
+- **2026-06-12 — live "Full stack" pass** (docker compose --profile e2e): register→login→me; MFA
+  enroll/verify, then login without TOTP → 401 `MFA_REQUIRED`, with TOTP → session; refresh rotates;
+  reusing the rotated token → 401 `INVALID_TOKEN` and the whole family is revoked (verified
+  `sessions.list` empties). `/login`, `/register`, `/forgot-password`, `/account` serve 200 from the
+  production build. FE typecheck/lint/139 tests/build green.

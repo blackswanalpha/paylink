@@ -26,20 +26,20 @@ buildable today.
 | 04 | [work04](work/work04.md) / [flow04](flow/flow04.md) — Error & Feedback System | System UX | §1 / F.5 | — | 03 | **done** |
 | 05 | [work05](work/work05.md) / [flow05](flow/flow05.md) — Motion System (animations & transitions) | System UX | §2.4 | — | 01,03 | **done** |
 | 06 | [work06](work/work06.md) / [flow06](flow/flow06.md) — Loading, Empty & Skeleton States | System UX | §1 | — | 03 | **done** |
-| 07 | [work07](work/work07.md) / [flow07](flow/flow07.md) — Notifications & Toasts System | System UX | §1 | — | 03,04 | todo |
+| 07 | [work07](work/work07.md) / [flow07](flow/flow07.md) — Notifications & Toasts System | System UX | §1 | — | 03,04 | **done** |
 
 ## FE-Phase 1 — Enabler
 
 | # | Work / Flow | Group | § / feNN | BE | Depends on | Status |
 |---|-------------|-------|----------|----|------------|--------|
-| 08 | [work08](work/work08.md) / [flow08](flow/flow08.md) — SDK Expansion (identity/merchant/compliance/admin/audit) | Enabler | §4 / fe-sdk | 09,10,11,12,13 | — | todo |
+| 08 | [work08](work/work08.md) / [flow08](flow/flow08.md) — SDK Expansion (identity/merchant/compliance/admin/audit) | Enabler | §4 / fe-sdk | 09,10,11,12,13 | — | **done** |
 
 ## FE-Phase 1 — Feature pages & modals (backend work01–14)
 
 | # | Work / Flow | Group | § / feNN | BE | Depends on | Status |
 |---|-------------|-------|----------|----|------------|--------|
-| 09 | [work09](work/work09.md) / [flow09](flow/flow09.md) — Auth (login/register/forgot/MFA) | Feature | §3.2 | 09 | 03,04,08 | done |
-| 10 | [work10](work/work10.md) / [flow10](flow/flow10.md) — Account & Security (profile/sessions/API keys/orgs) | Feature | §3.2 | 09 | 08,09 | done |
+| 09 | [work09](work/work09.md) / [flow09](flow/flow09.md) — Auth (login/register/forgot/MFA) | Feature | §3.2 | 09 | 03,04,08 | **done** |
+| 10 | [work10](work/work10.md) / [flow10](flow/flow10.md) — Account & Security (profile/sessions/API keys/orgs) | Feature | §3.2 | 09 | 08,09 | **done** |
 | 11 | [work11](work/work11.md) / [flow11](flow/flow11.md) — PayLinks Management (list/create modal/detail/cancel/QR) | Feature | §3.3 / fe04 | 01 | 03,04 | todo |
 | 12 | [work12](work/work12.md) / [flow12](flow/flow12.md) — Payments (list/detail/timeline) | Feature | §3.3 | 02 | 03 | todo |
 | 13 | [work13](work/work13.md) / [flow13](flow/flow13.md) — Public Resolve & Pay (payer) | Feature | §3.1 / fe05 | 01,02,04 | 03,04,05 | todo |
@@ -97,3 +97,8 @@ right table. Discovered side-work becomes a new row — it never expands the act
 - 2026-06-01 — Seeded the frontend workload: 24 full items (foundation + system UX + features for
   backend work01–14 + cross-cutting polish) + 6 seeded future items (25–30). 01/02/18 marked **done**
   and 03 **in-progress** to reflect the Ivory Premium foundation already shipped in `linkmint-frontend/`.
+- 2026-06-12 — Audit: verified work01–10 against code + the live compose-e2e stack (27 SDK-driven
+  checks PASS). Synced stale statuses 07/08/09 → done (landed in `36e0e48`), closed work06's live
+  e2e criterion and work10's pending walkthrough, closed the work03 champagne follow-up (full ramp +
+  emerald/champagne palette-group semantics — also fixes solid `colorPalette="emerald"` buttons
+  painting an unresolved token).

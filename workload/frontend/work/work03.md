@@ -66,10 +66,18 @@ the primitives shipped with the foundation, but the **interactive enterprise pat
   `typecheck` / `lint` / `test` (19/19) / `build` all green. **Unblocks work11/13/14 (Modal/Drawer/Stepper) and
   work07/14 (Stepper).**
 - **Follow-ups filed:** (1) extend the `champagne` ramp to a full 50–950 palette so `colorPalette="champagne"`
-  works and `GoldButton` can drop its style-prop overrides. Storybook + visual-regression remains work24; the
-  responsive row-card layout remains work20.
+  works and `GoldButton` can drop its style-prop overrides — **closed 2026-06-12** (see below). Storybook +
+  visual-regression remains work24; the responsive row-card layout remains work20.
 - **2026-06-02 — kit adopted into product pages.** Wired the kit into the live surfaces: `/dashboard`
   (`MerchantDashboard.tsx`) "Recent PayLinks" now renders `<DataTable>` (sortable Amount/Created), importing
   primitives from the `@/components/ui` barrel; the `/` wizard `CreatePayLinkForm.tsx` rebuilt on `<FormField>`
   (same validation) and `PayLinkDemo.tsx` gained a `<Stepper>` (create→pay→settlement). typecheck/lint/test
   (19/19)/build green; `/dashboard` + `/` render HTTP 200 with no error overlay.
+- **2026-06-12 — champagne follow-up closed (+ latent palette bug fixed).** The audit found Chakra v3
+  does **not** auto-generate `<palette>.solid/contrast/…` semantics for custom ramps, so every
+  `colorPalette="emerald"` solid Button/Badge was painting an unresolved var. `theme/system.ts` now
+  ships the full champagne 50–950 ramp **and** palette-group semantic tokens for `emerald` and
+  `champagne` (champagne contrast = ink, 4.5:1 on champagne.400); `GoldButton` is now a thin
+  `colorPalette="champagne"` wrapper (press-scale stays global via the button recipe). Verified by
+  probing the compiled system (`colors.emerald.solid → {colors.emerald.600}` etc.); typecheck/lint/
+  139 tests/build green.
