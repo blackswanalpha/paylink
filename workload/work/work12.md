@@ -24,10 +24,10 @@ decision (allow/block/review) for above-threshold actions. Full sanctions/KYB/mu
 - work01 Python/FastAPI layout; work09 user records; event bus (work15); standard error envelope.
 
 ## Acceptance criteria
-- [ ] KYC session create + provider callback updates `kyc_tier`.
-- [ ] `/v1/risk/evaluate` returns {decision, score, reasons}; above-threshold blocks correctly.
-- [ ] Compliance events published; tests ≥80%; lint/build clean.
-- [ ] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] KYC session create + provider callback updates `kyc_tier`.
+- [x] `/v1/risk/evaluate` returns {decision, score, reasons}; above-threshold blocks correctly.
+- [x] Compliance events published; tests ≥80%; lint/build clean.
+- [x] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service (Python/FastAPI)" + "Full stack".

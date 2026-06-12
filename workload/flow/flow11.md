@@ -17,4 +17,4 @@
 | 7 | Verify search + views gated correctly | `/verify` |
 
 ## Done
-- [ ] [work11](../work/work11.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).
+- [x] [work11](../work/work11.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).

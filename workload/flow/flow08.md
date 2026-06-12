@@ -18,4 +18,4 @@
 | 6 | Verify: `docker-compose up` healthy + full flow; CI green on a test PR | `/verify` |
 
 ## Done
-- [ ] [work08](../work/work08.md) criteria met; Infra/CI DoD complete; mark `done` in [backlog.md](../backlog.md).
+- [x] [work08](../work/work08.md) criteria met; Infra/CI DoD complete; mark `done` in [backlog.md](../backlog.md).

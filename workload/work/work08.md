@@ -36,10 +36,10 @@ Makes the system runnable and keeps it green as it grows (`../../CLAUDE.md` Buil
 - The commands already in [verification.md](../verification.md) for CI steps.
 
 ## Acceptance criteria
-- [ ] `docker-compose up -d` brings the in-scope stack healthy; the end-to-end flow works.
-- [ ] CI runs lint + unit + integration for each component on PR and is green.
-- [ ] No secrets committed in compose or workflow files.
-- [ ] Passes the Infra/CI checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] `docker-compose up -d` brings the in-scope stack healthy; the end-to-end flow works.
+- [x] CI runs lint + unit + integration for each component on PR and is green.
+- [x] No secrets committed in compose or workflow files.
+- [x] Passes the Infra/CI checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Full stack": `docker-compose up -d`, run the

@@ -17,4 +17,4 @@
 | 7 | Verify event→delivery on the stack (sandbox providers) | `/verify` |
 
 ## Done
-- [ ] [work14](../work/work14.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).
+- [x] [work14](../work/work14.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).

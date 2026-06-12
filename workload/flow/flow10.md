@@ -17,4 +17,4 @@
 | 7 | Verify onboarding → ACTIVE on the stack | `/verify` |
 
 ## Done
-- [ ] [work10](../work/work10.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).
+- [x] [work10](../work/work10.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).

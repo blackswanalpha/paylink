@@ -25,10 +25,10 @@ Twilio) + email (SendGrid/SES). Push (FCM) and HMAC-signed webhooks are Phase 2.
 - work01 Python/FastAPI layout; event bus (work15) as the trigger source; standard error envelope.
 
 ## Acceptance criteria
-- [ ] Domain event → templated SMS + email delivered (sandbox providers); retries on failure.
-- [ ] Delivery log persisted; events consumed per a template registry.
-- [ ] Tests ≥80%; lint/build clean.
-- [ ] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] Domain event → templated SMS + email delivered (sandbox providers); retries on failure.
+- [x] Delivery log persisted; events consumed per a template registry.
+- [x] Tests ≥80%; lint/build clean.
+- [x] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service (Python/FastAPI)" + "Full stack".

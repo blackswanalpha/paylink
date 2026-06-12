@@ -17,4 +17,4 @@
 | 7 | Verify chain + tamper detection | `/verify` |
 
 ## Done
-- [ ] [work13](../work/work13.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).
+- [x] [work13](../work/work13.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).
