@@ -248,6 +248,33 @@
   .contact h3{font:600 22px/1.25 var(--display);margin:0;color:#fff;}
   .contact p{font:400 14.5px/1.6 var(--body);color:#cfc9bd;margin:6px 0 0;}
   .contact .mono{color:var(--gold-300);}
+
+  /* market imagery band (slide 8) */
+  .mkt-band{display:flex;gap:14px;margin:4px 0 16px;}
+  .mkt-tile{flex:1;display:flex;flex-direction:column;min-width:0;}
+  .mkt-tile .ph{height:168px;border-radius:12px;overflow:hidden;border:1px solid var(--hairline);
+    box-shadow:0 3px 12px rgba(28,26,23,.12);position:relative;}
+  .mkt-tile .ph img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(.9) contrast(1.02);}
+  .mkt-tile .ph::after{content:"";position:absolute;inset:0;
+    background:linear-gradient(180deg,rgba(15,110,78,0) 58%,rgba(28,26,23,.16));}
+  .mkt-tile .cap{font:600 14px/1.15 var(--display);color:var(--ink);margin:10px 0 2px;}
+  .mkt-tile .cd{font:400 12px/1.35 var(--body);color:var(--ink-muted);}
+  .credit{font:400 10px/1.3 var(--body);color:var(--expired);margin-top:11px;}
+
+  /* how users benefit (slide 9) */
+  .bens{display:flex;gap:15px;}
+  .ben{flex:1;background:var(--surface);border:1px solid var(--hairline);border-radius:14px;
+    padding:17px 18px 15px;box-shadow:0 2px 8px rgba(28,26,23,.05);display:flex;flex-direction:column;}
+  .ben .hd{display:flex;align-items:center;gap:10px;margin-bottom:11px;}
+  .ben .bdot{width:34px;height:34px;border-radius:9px;background:var(--em-50);border:1px solid var(--em-100);
+    display:flex;align-items:center;justify-content:center;flex:none;}
+  .ben .who{font:600 15.5px/1.1 var(--display);color:var(--ink);}
+  .ben ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;}
+  .ben li{font:400 12.5px/1.4 var(--body);color:var(--ink-muted);padding-left:17px;position:relative;}
+  .ben li::before{content:"";position:absolute;left:0;top:6px;width:7px;height:7px;
+    background:var(--em-500);transform:rotate(45deg);border-radius:1px;}
+  .ben li b{color:var(--ink);font-weight:600;}
+  .ben .kpi{margin-top:auto;padding-top:12px;font:600 12.5px/1.25 var(--body);color:var(--em-700);}
 </style>
 </head>
 <body>
@@ -428,35 +455,113 @@
   <div class="kicker">Market</div>
   <h1 class="title sm">Start where mobile money already won — then expand the rails.</h1>
   <div class="body">
-    <div class="row" style="align-items:center;gap:36px;">
-      <div style="flex:none;">
-        <div class="rings">
-          <div class="ring r1">Kenya<br>M-Pesa</div>
-          <div class="ring r2">East<br>Africa</div>
-          <div class="ring r3">+ Card<br>+ Crypto</div>
-          <div class="ring r4">Global</div>
-        </div>
+    <div class="mkt-band">
+      <div class="mkt-tile">
+        <div class="ph"><img src="assets/market/rail.jpg" alt="M-Pesa mobile money agent, Nairobi"></div>
+        <div class="cap">Mobile money, everywhere</div>
+        <div class="cd">M-Pesa already runs daily life — our first rail.</div>
+      </div>
+      <div class="mkt-tile">
+        <div class="ph"><img src="assets/market/vendor.jpg" alt="Market vendor, Kenya"></div>
+        <div class="cap">Market &amp; food vendors</div>
+        <div class="cd">Millions of SMBs no PSP will bank.</div>
+      </div>
+      <div class="mkt-tile">
+        <div class="ph"><img src="assets/market/market.jpg" alt="Open-air marketplace, Kenya"></div>
+        <div class="cap">Artisans &amp; marketplaces</div>
+        <div class="cd">Sell with a link, a QR, or an NFT ticket.</div>
+      </div>
+      <div class="mkt-tile">
+        <div class="ph"><img src="assets/market/boda.jpg" alt="Boda boda riders, Nairobi"></div>
+        <div class="cap">Boda &amp; the gig economy</div>
+        <div class="cd">Instant, low-fee payouts to riders.</div>
+      </div>
+    </div>
+    <div class="row" style="gap:20px;align-items:stretch;">
+      <div style="flex:none;width:284px;background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:15px 18px;display:flex;flex-direction:column;justify-content:center;">
+        <div style="font:600 33px/1 var(--display);color:var(--em-600)">$800B+ / yr</div>
+        <div style="font:400 13px/1.5 var(--body);color:var(--ink-muted);margin-top:7px;">moves through mobile money across Sub-Saharan Africa — the rails our protocol plugs straight into. <span style="font-size:11px">(GSMA, State of the Industry)</span></div>
       </div>
       <div class="col">
-        <div style="background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:16px 20px;margin-bottom:16px;">
-          <div style="font:600 30px/1 var(--display);color:var(--em-600)">$800B+ / yr</div>
-          <div style="font:400 14px/1.5 var(--body);color:var(--ink-muted);margin-top:6px;">moves through mobile money across Sub-Saharan Africa — the rails our protocol plugs straight into. <span style="font-size:12px">(GSMA, State of the Industry)</span></div>
-        </div>
-        <div style="font:600 12px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:9px;">Who pays &amp; gets paid</div>
+        <div style="font:600 12px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:8px;">Who pays &amp; gets paid</div>
         <div class="persona">
           <span class="chip">SMB merchants</span><span class="chip">Payers — guest, no account</span><span class="chip">Developers / ISVs</span><span class="chip">Platforms &amp; marketplaces</span>
         </div>
-        <div style="font:600 12px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted);margin:16px 0 9px;">Where one link unlocks new revenue</div>
+        <div style="font:600 12px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted);margin:13px 0 8px;">Where one link unlocks new revenue</div>
         <div class="persona">
           <span class="chip go">Micropayments &amp; tips</span><span class="chip go">Content unlocks</span><span class="chip go">Invoices &amp; subscriptions</span><span class="chip go">Escrow &amp; marketplaces</span>
         </div>
       </div>
     </div>
+    <div class="credit">Imagery: Wikimedia Commons — © Fiona Graham, Biva2017, Wawerumacha, Tmaokisa · CC BY-SA.</div>
   </div>
   <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>08</span></div>
 </section>
 
-<!-- ============ 9 · BUSINESS MODEL ============ -->
+<!-- ============ 9 · HOW USERS BENEFIT ============ -->
+<section class="slide">
+  <div class="kicker">How users benefit</div>
+  <h1 class="title sm">Everyone who touches a PayLink comes out ahead.</h1>
+  <div class="body">
+    <div class="bens">
+      <div class="ben">
+        <div class="hd">
+          <span class="bdot"><svg class="ic" viewBox="0 0 24 24"><path d="M6 2 L3 6 V20 a2 2 0 0 0 2 2 H19 a2 2 0 0 0 2-2 V6 L18 2 Z"/><path d="M3 6 H21"/><path d="M16 10 a4 4 0 0 1-8 0"/></svg></span>
+          <span class="who">Merchants &amp; SMBs</span>
+        </div>
+        <ul>
+          <li><b>Zero setup</b> — accept payments with no PSP licence and no float locked up.</li>
+          <li><b>Keep more of every sale</b> — 0.5% vs 1–3% on cards.</li>
+          <li>Money settles <b>straight to your own wallet</b> — we never hold it.</li>
+          <li>New revenue from <b>tips &amp; micro-sales</b> that were never worth collecting.</li>
+        </ul>
+        <div class="kpi">Up to 5× lower fees · paid instantly</div>
+      </div>
+      <div class="ben">
+        <div class="hd">
+          <span class="bdot"><svg class="ic" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M11 18 h2"/></svg></span>
+          <span class="who">Customers &amp; payers</span>
+        </div>
+        <ul>
+          <li>Pay in <b>seconds with M-PESA</b> — no app to download, no account to open.</li>
+          <li>Just scan a <b>link, QR, or NFT</b> and confirm.</li>
+          <li><b>Proof you paid</b> — an on-chain receipt; funds go straight to the seller.</li>
+          <li>Nothing custodial to trust — the money never sits with a middleman.</li>
+        </ul>
+        <div class="kpi">Zero onboarding · anyone with M-PESA can pay</div>
+      </div>
+      <div class="ben">
+        <div class="hd">
+          <span class="bdot"><svg class="ic" viewBox="0 0 24 24"><path d="M16 18 L22 12 L16 6"/><path d="M8 6 L2 12 L8 18"/></svg></span>
+          <span class="who">Developers &amp; platforms</span>
+        </div>
+        <ul>
+          <li>One <b>drop-in SDK</b> and a single link primitive.</li>
+          <li>Program <b>escrow, splits &amp; subscriptions</b> — without holding funds.</li>
+          <li>Skip money-transmitter licensing — <b>non-custodial by design</b>.</li>
+          <li>Embed payments as a feature; let LinkMint settle on-chain.</li>
+        </ul>
+        <div class="kpi">Go live in a day, not a quarter</div>
+      </div>
+      <div class="ben">
+        <div class="hd">
+          <span class="bdot"><svg class="ic" viewBox="0 0 24 24"><path d="M17 21 v-2 a4 4 0 0 0-4-4 H5 a4 4 0 0 0-4 4 v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21 v-2 a4 4 0 0 0-3-3.87"/><path d="M16 3.13 a4 4 0 0 1 0 7.75"/></svg></span>
+          <span class="who">Communities &amp; SACCOs</span>
+        </div>
+        <ul>
+          <li>Collect chama, Harambee &amp; church funds to a <b>shared wallet</b>.</li>
+          <li>Every shilling <b>auditable on-chain</b> — no treasurer black box.</li>
+          <li><b>Micro-fees</b> keep group savings whole.</li>
+          <li>Programmable rules — contributions, payouts, deadlines.</li>
+        </ul>
+        <div class="kpi">Transparent by default · tamper-evident</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>09</span></div>
+</section>
+
+<!-- ============ 10 · BUSINESS MODEL ============ -->
 <section class="slide">
   <div class="kicker">Business model</div>
   <h1 class="title sm">A take-rate built for volume — and viable for the smallest payment.</h1>
@@ -491,10 +596,10 @@
       </div>
     </div>
   </div>
-  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>09</span></div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>10</span></div>
 </section>
 
-<!-- ============ 10 · DIFFERENTIATION ============ -->
+<!-- ============ 11 · DIFFERENTIATION ============ -->
 <section class="slide">
   <div class="kicker">Why LinkMint wins</div>
   <h1 class="title sm">One link does what no incumbent does at once.</h1>
@@ -514,10 +619,10 @@
       </tbody>
     </table>
   </div>
-  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>10</span></div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>11</span></div>
 </section>
 
-<!-- ============ 11 · IMPACT & ROI ============ -->
+<!-- ============ 12 · IMPACT & ROI ============ -->
 <section class="slide">
   <div class="kicker">Impact &amp; ROI · why it pays</div>
   <h1 class="title sm">More revenue for merchants, real returns for investors, lift for the economy.</h1>
@@ -569,10 +674,10 @@
       </div>
     </div>
   </div>
-  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>11</span></div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>12</span></div>
 </section>
 
-<!-- ============ 12 · WHERE LINKMINT GOES NEXT ============ -->
+<!-- ============ 13 · WHERE LINKMINT GOES NEXT ============ -->
 <section class="slide">
   <div class="kicker">Vertical expansion</div>
   <h1 class="title sm">Where LinkMint goes next: one protocol, many verticals.</h1>
@@ -611,10 +716,10 @@
       </div>
     </div>
   </div>
-  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>12</span></div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>13</span></div>
 </section>
 
-<!-- ============ 13 · COMPLIANCE ============ -->
+<!-- ============ 14 · COMPLIANCE ============ -->
 <section class="slide">
   <div class="kicker">Compliance &amp; trust</div>
   <h1 class="title sm">Non-custodial by design — compliant by construction.</h1>
@@ -636,10 +741,10 @@
       </div>
     </div>
   </div>
-  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>13</span></div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>14</span></div>
 </section>
 
-<!-- ============ 14 · GTM & ROADMAP ============ -->
+<!-- ============ 15 · GTM & ROADMAP ============ -->
 <section class="slide">
   <div class="kicker">Go-to-market &amp; roadmap</div>
   <h1 class="title sm">Phase 1 is done. Now we scale rails and consensus.</h1>
@@ -663,10 +768,10 @@
       </div>
     </div>
   </div>
-  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>14</span></div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>15</span></div>
 </section>
 
-<!-- ============ 15 · TEAM ============ -->
+<!-- ============ 16 · TEAM ============ -->
 <section class="slide">
   <div class="kicker">Team</div>
   <h1 class="title sm">Founder-led — hiring to scale.</h1>
@@ -688,10 +793,10 @@
     </div>
     <div style="font:400 13.5px/1.5 var(--body);color:var(--ink-muted);margin-top:16px;">Advisory — actively seeking mentors from the Rupa Mall innovator network across payments, fintech regulation, and go-to-market.</div>
   </div>
-  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>15</span></div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>16</span></div>
 </section>
 
-<!-- ============ 16 · THE ASK ============ -->
+<!-- ============ 17 · THE ASK ============ -->
 <section class="slide">
   <div class="kicker">The ask</div>
   <h1 class="title">Let's bring programmable payments to East Africa.</h1>
@@ -714,7 +819,7 @@
       </div>
     </div>
   </div>
-  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>16</span></div>
+  <div class="foot"><span class="mark"><svg class="dia" viewBox="0 0 24 24"><path d="M12 1 L23 12 L12 23 L1 12 Z"/></svg>LinkMint</span><span>Pay anyone, through any rail, with a link</span><span>17</span></div>
 </section>
 
 </body>
