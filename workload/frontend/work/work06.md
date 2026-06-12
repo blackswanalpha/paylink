@@ -41,7 +41,7 @@ boundaries — reused by every feature page.
 - [x] An empty-state catalog covers the core surfaces with branded copy + CTA.
 - [x] An optimistic-update helper with rollback is available and used by ≥1 mutation (PayLink cancel).
 - [x] `aria-busy` on loading regions; no bare spinners on content; `typecheck`/`lint`/`build` green.
-- [~] Passes the **App** checklist + [frontendfeature.md §7](../../../frontendfeature.md) — static checks (typecheck/lint/build + 91 unit tests) green; the live `docker compose --profile e2e` behavioral pass (throttle → skeletons, fresh creator → empty, cancel → optimistic flip) is the remaining step.
+- [x] Passes the **App** checklist + [frontendfeature.md §7](../../../frontendfeature.md) — static checks green (typecheck/lint/build, now 139 unit tests) and the live `docker compose --profile e2e` pass done 2026-06-12: fresh creator → empty list, create → cancel → state reconciles `CANCELLED`, `/dashboard/paylinks` serves 200 against the live stack (skeleton/optimistic-flip rendering is covered by the unit suites).
 
 ## Verification
 [../../verification.md](../../verification.md) → "App": throttle the network and confirm skeletons (not
@@ -57,3 +57,6 @@ flip + reconcile.
   `POST /v1/paylinks/{id}/cancel` + `get` reconcile, rollback on error) into the dashboard's Recent
   table and a new **live `/dashboard/paylinks`** page (nav flipped `live:true`); shared columns +
   alert-dialog confirm in `components/paylinks/`. KitchenSink gallery + 5 Vitest suites (91 tests green).
+- **2026-06-12 — live e2e pass recorded** (audit): fresh-creator empty state, optimistic cancel
+  reconcile (`POST /v1/paylinks/{id}/cancel` → GET shows `CANCELLED`), and the live `/dashboard/paylinks`
+  page verified against the compose stack; AC5 closed.

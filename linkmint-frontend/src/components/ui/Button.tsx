@@ -8,11 +8,9 @@
  *   - ghost    → `<Button variant="ghost">`
  *   - gold     → `<GoldButton>` (celebratory — settlements/premium)
  *
- * Why GoldButton instead of `colorPalette="champagne"`: the Ivory theme's `champagne` ramp stops at
- * `600`, but Chakra's `colorPalette` resolves shades up to `950`, so a champagne palette renders
- * broken. GoldButton paints the celebratory look with the semantic `gold.*` tokens via style props
- * (dark ink text clears 4.5:1 on champagne.400). Extending the ramp to a full palette is a deliberate
- * out-of-scope follow-up (would also let `colorPalette="champagne"` work).
+ * GoldButton is `colorPalette="champagne"`: the theme ships the full champagne ramp plus its
+ * palette-group semantics (`champagne.solid/contrast/…`, contrast = ink, which clears 4.5:1 on
+ * champagne.400), so Chakra's solid recipe paints the celebratory look directly.
  *
  * a11y (F.6): native <button> + the global emerald focus ring (theme/system.ts); `loading` sets
  * aria-busy and disables; icon-only actions must use `IconButton` with an `aria-label`.
@@ -25,16 +23,7 @@ export type { ButtonProps, IconButtonProps } from '@chakra-ui/react';
 
 export type GoldButtonProps = ButtonProps;
 
-/** Celebratory gold action (settlement success, premium). Uses `gold.*` tokens, not colorPalette. */
+/** Celebratory gold action (settlement success, premium). */
 export function GoldButton(props: GoldButtonProps) {
-  return (
-    <Button
-      variant="solid"
-      bg="gold.solid"
-      color="ink"
-      _hover={{ bg: 'champagne.500' }}
-      _active={{ bg: 'champagne.600', transform: 'scale(0.97)' }}
-      {...props}
-    />
-  );
+  return <Button variant="solid" colorPalette="champagne" {...props} />;
 }

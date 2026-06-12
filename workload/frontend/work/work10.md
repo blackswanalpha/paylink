@@ -38,7 +38,7 @@ this turns them into a polished `/account` surface (the developer portal reuses 
 - [x] Profile edit, session revoke, API-key issue(once)/list/revoke, org create + member add/remove all work via the SDK.
 - [x] The one-time API-key secret is shown with a copy + warning and is not re-fetchable/persisted.
 - [x] Destructive actions confirm; tables are keyboard-accessible; envelope errors surfaced.
-- [x] `typecheck`/`lint`/`build` green (SDK + frontend); backend `pytest`/`ruff`/`mypy` green. Live-stack **App**/**Full stack** walkthrough still pending (needs docker-compose up).
+- [x] `typecheck`/`lint`/`build` green (SDK + frontend); backend `pytest`/`ruff`/`mypy` green. Live-stack **App**/**Full stack** walkthrough done 2026-06-12 (docker compose --profile e2e).
 
 ## Verification
 [../../verification.md](../../verification.md) → "App" + "Full stack": issue an API key (copy-once),
@@ -58,3 +58,9 @@ revoke a session, create an org + invite a member, edit profile — all against 
   the roles-derived list as a silent fallback.
 - Left uncommitted for review (per request). Verified: notify 95 / identity 97 pytest, SDK 127, FE 139
   tests, plus typecheck/lint/build across SDK + FE and ruff/mypy on both services.
+- **2026-06-12 — live walkthrough done** (audit, compose e2e): profile edit; sessions list (correct
+  `current` flags) + revoke reflects; api-key issue → `full_key` returned exactly once, list never
+  re-exposes it, revoke ok; org create → `organizations.list` shows the real name; member add/remove
+  reflects; preferences GET (defaults all-on) → PUT patch → a disabled `paylink.created` suppresses
+  the inbox write, re-enabled it lands (recipient-scoped via X-Creator-Addr). Gates re-run green:
+  identity 103 / notify 99 pytest (+ruff/mypy), SDK vitest + 80% thresholds, FE 139 tests.

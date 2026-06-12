@@ -1,6 +1,6 @@
 # work08 — SDK Expansion (identity / merchant / compliance / admin / audit)
 
-- **Status:** todo
+- **Status:** done
 - **Owner:** service-builder
 - **Depends on:** backend 09, 10, 11, 12, 13 (all done)
 - **Flow:** [flow08](../flow/flow08.md)
@@ -42,11 +42,11 @@ The backend services exist (work09–13 done); this item mirrors their wire cont
   backend service's `app/api/v1/schemas.py` (Python) / `internal/server/*.go` (Go).
 
 ## Acceptance criteria
-- [ ] `client.{auth,users,organizations,sessions,merchants,compliance,admin,auditLog}` resources exist with typed methods + wire types.
-- [ ] Field names mirror the backend wire shape exactly (no mapping layer); errors map to the existing hierarchy.
-- [ ] Mutations carry auto-`Idempotency-Key`; no client `X-Creator-Addr`.
-- [ ] `tsc` strict + ESLint (no `any`) clean; vitest success+error paths; **≥80% coverage**.
-- [ ] Passes the **SDK** checklist in [../../definition-of-done.md](../../definition-of-done.md).
+- [x] `client.{auth,users,organizations,sessions,merchants,compliance,admin,auditLog}` resources exist with typed methods + wire types.
+- [x] Field names mirror the backend wire shape exactly (no mapping layer); errors map to the existing hierarchy.
+- [x] Mutations carry auto-`Idempotency-Key`; no client `X-Creator-Addr`.
+- [x] `tsc` strict + ESLint (no `any`) clean; vitest success+error paths; **≥80% coverage**.
+- [x] Passes the **SDK** checklist in [../../definition-of-done.md](../../definition-of-done.md).
 
 ## Verification
 [../../verification.md](../../verification.md) → "SDK" + "Full stack": unit tests against a mock fetch,
@@ -55,3 +55,15 @@ onboard; kyc status; admin search; audit query) and confirm typed errors from re
 
 ## Notes / log
 - The keystone enabler: do this before work09/10/14/15/16/17. Mirrors the work06 SDK conventions exactly.
+- **Done (landed in `36e0e48`, status synced 2026-06-12 audit).** All 8 resources wired on the client
+  (`sdks/javascript/src/client.ts`) plus `notifications.getPreferences/updatePreferences` and
+  `organizations.list()`; wire types snake_case byte-for-byte; auto `Idempotency-Key` on every
+  mutation; no `X-Creator-Addr` anywhere in client code (identity-family routes are gateway
+  PASS-THROUGH — Authorization forwarded, services self-verify RS256). Vitest per-resource
+  success+error suites; coverage thresholds (80% lines/functions/statements/branches) enforced in
+  `vitest.config.ts` and passing.
+- **2026-06-12 — live "Full stack" pass** (docker compose --profile e2e, real envelopes through Kong):
+  register→login→me, MFA enroll/verify→challenge (401 `MFA_REQUIRED` typed error), refresh rotation +
+  reuse→401 `INVALID_TOKEN`, password-reset request, profile edit, sessions list/revoke, org
+  create/list/members, api-key issue (`full_key` once)/list/revoke, preferences GET/PUT, paylink
+  create/cancel — 27 SDK-driven checks PASS.

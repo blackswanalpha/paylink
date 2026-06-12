@@ -44,7 +44,7 @@ const config = defineConfig({
           900: { value: '#052D22' },
           950: { value: '#031C16' },
         },
-        // Champagne / gold highlight
+        // Champagne / gold highlight — full 50–950 ramp so `colorPalette="champagne"` resolves
         champagne: {
           50: { value: '#FBF6E9' },
           100: { value: '#F3E7C4' },
@@ -53,6 +53,10 @@ const config = defineConfig({
           400: { value: '#C8A24B' },
           500: { value: '#B08C37' },
           600: { value: '#8E6F2A' },
+          700: { value: '#6F571F' },
+          800: { value: '#514018' },
+          900: { value: '#362A0F' },
+          950: { value: '#221A09' },
         },
         // Status hues
         statusPending: { value: '#B8860B' },
@@ -113,6 +117,27 @@ const config = defineConfig({
           solid: { value: '{colors.champagne.400}' },
           subtle: { value: '{colors.champagne.50}' },
           fg: { value: '{colors.champagne.600}' },
+        },
+        // Palette-group semantics: Chakra v3 does NOT auto-generate `<palette>.solid/contrast/…`
+        // for custom ramps, and the built-in recipes (Button solid, Badge, …) resolve exactly
+        // these names — without them `colorPalette="emerald"` paints an unresolved var.
+        emerald: {
+          solid: { value: '{colors.emerald.600}' },
+          contrast: { value: 'white' },
+          fg: { value: '{colors.emerald.700}' },
+          muted: { value: '{colors.emerald.100}' },
+          subtle: { value: '{colors.emerald.50}' },
+          emphasized: { value: '{colors.emerald.200}' },
+          focusRing: { value: '{colors.emerald.600}' },
+        },
+        champagne: {
+          solid: { value: '{colors.champagne.400}' },
+          contrast: { value: '{colors.ink}' },
+          fg: { value: '{colors.champagne.600}' },
+          muted: { value: '{colors.champagne.100}' },
+          subtle: { value: '{colors.champagne.50}' },
+          emphasized: { value: '{colors.champagne.200}' },
+          focusRing: { value: '{colors.champagne.500}' },
         },
         // Status semantics — the single source consumed by StatusPill (see §2.6)
         status: {

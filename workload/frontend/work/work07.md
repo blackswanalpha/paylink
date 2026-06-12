@@ -1,6 +1,6 @@
 # work07 — Notifications & Toasts System
 
-- **Status:** todo
+- **Status:** done
 - **Owner:** service-builder
 - **Depends on:** 03, 04
 - **Flow:** [flow07](../flow/flow07.md)
@@ -40,11 +40,11 @@ work04 (errors decide *whether* a failure is a toast; this item owns *how* toast
   the existing `toast.*` calls in `AddressChip.tsx`/hooks (migrate them to `notify.*`).
 
 ## Acceptance criteria
-- [ ] A typed `notify.*` wrapper + themed toaster replaces ad-hoc `toast.*` calls.
-- [ ] Promise toasts wrap ≥1 async mutation (loading→success/error).
-- [ ] A notification-center bell + panel renders (local store), with the work14-backed parts marked PLANNED.
-- [ ] Toasts are `aria-live`, dismissible, reduced-motion-aware; no double-surfacing with work04.
-- [ ] `typecheck`/`lint`/`build` green; passes the **App** checklist + [frontendfeature.md §7](../../../frontendfeature.md).
+- [x] A typed `notify.*` wrapper + themed toaster replaces ad-hoc `toast.*` calls.
+- [x] Promise toasts wrap ≥1 async mutation (loading→success/error).
+- [x] A notification-center bell + panel renders (local store), with the work14-backed parts marked PLANNED.
+- [x] Toasts are `aria-live`, dismissible, reduced-motion-aware; no double-surfacing with work04.
+- [x] `typecheck`/`lint`/`build` green; passes the **App** checklist + [frontendfeature.md §7](../../../frontendfeature.md).
 
 ## Verification
 [../../verification.md](../../verification.md) → "App": trigger a success (copy), a promise toast (create
@@ -52,3 +52,14 @@ PayLink), and a coordinated error (one surface only); open the notification cent
 
 ## Notes / log
 - Third leg of the system-UX trio (work04 errors, work06 loading/empty, work07 notifications).
+- **Done (landed in `36e0e48`, status synced 2026-06-12 audit).** `notify.*` (`src/lib/notify.ts`) is
+  the sole sonner wrapper (success/info/warning/error/loading); themed Toaster in `Provider.tsx`;
+  `reportError`'s toast path renders through `notify.error` (F.5, one surface only); create-PayLink
+  uses `notify.loading` (not `toast.promise`). The notification center **exceeded** AC3: instead of a
+  local store it shipped FULL-STACK — `components/notifications/{NotificationBell,NotificationCenter,
+  NotificationItem,NotificationLiveRegion}.tsx` + `hooks/useNotifications.ts` over the real
+  notification-service inbox API (`client.notifications`, scoped by `creator_addr`/X-Creator-Addr, with
+  paylink-service emitting events). No PLANNED markers needed — the work14 backend already backs it.
+- **2026-06-12 — live e2e pass** (docker compose --profile e2e): paylink create with the event enabled
+  landed in the creator-scoped inbox; with `paylink.created` disabled via preferences the inbox write
+  was suppressed (see work10 preferences). FE typecheck/lint/139 tests/build green.
