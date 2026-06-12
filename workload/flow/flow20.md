@@ -3,7 +3,7 @@
 **Work item:** [work20](../work/work20.md) · **Goal recap:** conditional release/refund without custody.
 
 ## Pre-flight
-- [ ] Read [work20](../work/work20.md), [rules.md](../rules.md) (A.1!). Confirm work01 + work03 `done`. Set `in-progress`.
+- [x] Read [work20](../work/work20.md), [rules.md](../rules.md) (A.1!). Confirmed work01 + work03 `done`.
 
 ## Steps (skeleton — refine on start)
 | # | Step | Agent / Skill |
@@ -17,4 +17,7 @@
 | 7 | Verify release + timeout-refund paths | `/verify` |
 
 ## Done
-- [ ] [work20](../work/work20.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).
+- [x] [work20](../work/work20.md) criteria met; DoD complete; marked `done` in [backlog.md](../backlog.md).
+  2026-06-12: built per steps 1–7 (Explore→Plan→service-builder→invariant-auditor→verify); cover 94.0%,
+  invariants 8/8 PASS, live compose smoke green (funded release via real `chain.paylink.verified` + rpk,
+  timeout refund via sweeper). See work20 Notes/log.

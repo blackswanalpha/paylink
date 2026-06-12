@@ -29,10 +29,10 @@ publish/consume client libs for Python and Go services.
   the event kinds in `paylink-chain/internal/events/event.go`.
 
 ## Acceptance criteria
-- [ ] Transport runs locally; a Python and a Go service can publish + consume a test event.
-- [ ] Event catalog documented (logical name → topic/queue) and referenced by services.
-- [ ] chain-event-mirror republishes lVM events to `chain.*`.
-- [ ] Tests for the client libs; passes the Infra/CI checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] Transport runs locally; a Python and a Go service can publish + consume a test event.
+- [x] Event catalog documented (logical name → topic/queue) and referenced by services.
+- [x] chain-event-mirror republishes lVM events to `chain.*`.
+- [x] Tests for the client libs; passes the Infra/CI checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Full stack": publish an event from one service, observe
@@ -57,3 +57,7 @@ it consumed by another; observe a `chain.*` event after a node event.
   `payment.proof_received`, audit-log `intake.Source`); a dead-letter policy for poison messages; an
   `admin` topic for `admin.override.*`; flipping the remaining services to kafka mode in compose
   (Dockerfile→repo-root context + env; paylink/notification are the worked examples).
+- 2026-06-12 — audit re-verified: suites fresh-green against the ADR-015 chain (eventbus-go 84.0%,
+  eventbus-python 99.3%, chain-event-mirror 96.2%; mirror's event shapes unaffected by the hardening);
+  boxes ticked. The "Go inbound consumers" follow-up got its first instance: escrow-manager (work20)
+  consumes `chain.paylink.verified`.

@@ -2,7 +2,7 @@
 
 > **Seeded** — expand with `/work 17` when picked up.
 
-- **Status:** todo · **Owner:** service-builder · **Stack:** shared Python/Go middleware + Redis · **Depends on:** 15 · **Flow:** [flow17](../flow/flow17.md)
+- **Status:** done · **Owner:** service-builder · **Stack:** shared Python/Go middleware + Redis · **Depends on:** 15 · **Flow:** [flow17](../flow/flow17.md)
 - **Phase:** 1 / MVP (cross-cutting) · **Spec:** backendfeatures.md §"Idempotency"
 
 ## Goal
@@ -26,11 +26,22 @@ safe to retry — the application-layer complement to the chain's on-chain anti-
   the event bus (work15) consumer contracts.
 
 ## Acceptance criteria
-- [ ] Middleware caches + replays responses by `Idempotency-Key` (Redis, 24h TTL).
-- [ ] Consumer helper dedupes repeated events; double-delivery causes no double effect.
-- [ ] Adopted by at least one Python and one Go service; tests ≥80%.
-- [ ] Passes the relevant [definition-of-done.md](../definition-of-done.md) checklist(s).
+- [x] Middleware caches + replays responses by `Idempotency-Key` (Redis, 24h TTL).
+- [x] Consumer helper dedupes repeated events; double-delivery causes no double effect.
+- [x] Adopted by at least one Python and one Go service; tests ≥80%.
+- [x] Passes the relevant [definition-of-done.md](../definition-of-done.md) checklist(s).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service": send a mutating request twice with the
 same key; confirm single effect + identical response; redeliver an event, confirm no double effect.
+
+## Notes / log
+- Shipped as the sibling libs `linkmint-backend/idempotency-go` + `idempotency-python`: HTTP
+  `Idempotency-Key` store (`idem:<service>:<route>:<key>`, 24h TTL, replay + body-mismatch/in-flight
+  conflict) adopted by all 9 services (4 Go via `replace`, 5+ Python via pip); consumer-side
+  `RedisDedupe` (best-effort short-circuit) + `DbDedupe` (durable, caller's tx).
+- 2026-06-12 — audit: header was stale (`todo`); flipped to done. Consumer dedupe verified wired:
+  `RedisDedupe` live in the notification-service, invoice-subscription and fee-pricing-service bus
+  consumers (`app/busconsumer/run.py`) over idempotent domain upserts; `DbDedupe` gets its first
+  transactional wiring in escrow-manager's `chain.paylink.verified` consumer (work20). Suites
+  fresh-green: idempotency-go 88.6%, idempotency-python 97.6%; boxes ticked.

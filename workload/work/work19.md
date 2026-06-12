@@ -23,10 +23,15 @@ lifecycle. Recurring subscriptions are deferred to work31 (Phase 3).
 - work01 paylink-service (`/v1/paylinks`) to create the aggregated PayLink; event bus (work15).
 
 ## Acceptance criteria
-- [ ] Create multi-line invoice → finalize → single PayLink → pay → invoice PAID.
-- [ ] Finalize one-way; void blocked after partial payment; OVERDUE on due date.
-- [ ] Tests ≥80%; lint/build clean.
-- [ ] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] Create multi-line invoice → finalize → single PayLink → pay → invoice PAID.
+- [x] Finalize one-way; void blocked after partial payment; OVERDUE on due date.
+- [x] Tests ≥80%; lint/build clean.
+- [x] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service (Python/FastAPI)" + "Full stack".
+
+## Notes / log
+- 2026-06-12 — audit re-verified: lifecycle + finalize→PayLink (`Idempotency-Key=invoice-<id>`) +
+  `chain.paylink.verified`→PAID consumer + OVERDUE sweeper/lazy all in place; suite fresh-green
+  (57 tests, 95.2%); prometheus scrape target added under work18's audit note; boxes ticked.
