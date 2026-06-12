@@ -103,6 +103,12 @@ class UnsignedSigner(ServiceKeySigner):
 
 
 def build_signer(settings: Settings) -> Signer:
+    if settings.signer_mode == "unsigned" and settings.chain_submit_enabled:
+        raise ValueError(
+            "PAYLINK_SIGNER_MODE=unsigned cannot be combined with chain submission: the chain "
+            "verifies every tx signature (ADR-015), so every submit would be rejected. Provide a "
+            "key (service_key) or set PAYLINK_CHAIN_SUBMIT_ENABLED=false."
+        )
     cls: type[ServiceKeySigner] = (
         UnsignedSigner if settings.signer_mode == "unsigned" else ServiceKeySigner
     )

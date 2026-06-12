@@ -25,24 +25,15 @@ type ServiceKeySigner struct {
 func (s *ServiceKeySigner) Address() lvm.Address             { return s.addr }
 func (s *ServiceKeySigner) SignTx(tx *lvm.Transaction) error { return lvm.SignTx(tx, s.key) }
 
-// UnsignedSigner supplies a correct From-derived hash but an empty signature. Valid because the
-// chain does not verify tx signatures yet (ADR-005); lets a deployment run before a key is issued.
-type UnsignedSigner struct {
-	addr lvm.Address
-}
-
-func (u *UnsignedSigner) Address() lvm.Address { return u.addr }
-
-func (u *UnsignedSigner) SignTx(tx *lvm.Transaction) error {
-	tx.Hash = lvm.SHA256Hash(tx.SignableBytes())
-	tx.Signature = []byte{}
-	return nil
-}
-
-// Build constructs a Signer from config. mode is "service_key" or "unsigned"; keyHex is the P-256
-// D scalar in hex (with or without 0x). When keyHex is empty a key is generated and generated=true
-// is returned so the caller can warn (devnet convenience only).
+// Build constructs a Signer from config. mode must be "service_key"; keyHex is the P-256 D scalar
+// in hex (with or without 0x). When keyHex is empty a key is generated and generated=true is
+// returned so the caller can warn (devnet convenience only). The former "unsigned" mode is gone:
+// the chain verifies every tx signature (ADR-015), so an unsigned tx is rejected at admission and
+// the mode would silently fail all settlements.
 func Build(mode, keyHex string) (s Signer, generated bool, err error) {
+	if mode != "service_key" {
+		return nil, false, fmt.Errorf("signer: unsupported mode %q — the chain enforces tx signatures (ADR-015); use service_key", mode)
+	}
 	var key *ecdsa.PrivateKey
 	if keyHex == "" {
 		key, err = lvm.GenerateKey()
@@ -53,9 +44,5 @@ func Build(mode, keyHex string) (s Signer, generated bool, err error) {
 	if err != nil {
 		return nil, false, fmt.Errorf("load signer key: %w", err)
 	}
-	addr := lvm.PrivateKeyToAddress(key)
-	if mode == "unsigned" {
-		return &UnsignedSigner{addr: addr}, generated, nil
-	}
-	return &ServiceKeySigner{key: key, addr: addr}, generated, nil
+	return &ServiceKeySigner{key: key, addr: lvm.PrivateKeyToAddress(key)}, generated, nil
 }
