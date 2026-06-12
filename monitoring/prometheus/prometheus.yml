@@ -28,6 +28,9 @@ scrape_configs:
           - "payment-orchestrator:8080"
           - "proof-validator:8081"
           - "mpesa-adapter:8082"
+          - "invoice-subscription:8096"
+          - "fee-pricing-service:8097"
+          - "escrow-manager:8098"
 
   # The lVM node (run paylink-chain with --metrics; rides the e2e profile). Namespace: linkm_*.
   - job_name: lvm-node

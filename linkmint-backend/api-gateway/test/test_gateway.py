@@ -48,6 +48,32 @@ def test_jwt_routes_to_payment_orchestrator(client: httpx.Client, valid_token: s
     assert body["path"] == "/v1/payments/abc123"
 
 
+# work20 — escrows are authenticated + identity-injected exactly like paylinks/payments.
+def test_jwt_routes_to_escrow_manager(client: httpx.Client, valid_token: str) -> None:
+    r = client.get("/v1/escrows", headers=auth(valid_token))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["service"] == "payments"  # the payments echo observes the escrow upstream
+    assert body["path"] == "/v1/escrows"
+
+
+def test_escrows_missing_credentials_401_envelope(client: httpx.Client) -> None:
+    r = client.get("/v1/escrows")
+    assert r.status_code == 401
+    assert_envelope(r.json(), "UNAUTHORIZED")
+
+
+def test_escrows_creator_addr_injected_and_spoof_stripped(
+    client: httpx.Client, valid_token: str
+) -> None:
+    spoof = "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    r = client.get("/v1/escrows", headers={**auth(valid_token), "X-Creator-Addr": spoof})
+    assert r.status_code == 200
+    headers = r.json()["headers"]
+    assert headers.get("x-creator-addr") == "0xaaaaaa0000000000000000000000000000000001"
+    assert spoof not in (headers.get("x-creator-addr") or "")
+
+
 def test_unknown_route_404_envelope(client: httpx.Client) -> None:
     r = client.get("/nope")  # no auth needed; unknown path → 404
     assert r.status_code == 404
