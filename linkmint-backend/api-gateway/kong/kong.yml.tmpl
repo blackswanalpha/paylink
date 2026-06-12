@@ -16,9 +16,10 @@
 # failure; the serverless `access` function below then rejects the anonymous consumer with 401.
 #
 # The serverless (post-function) plugin does the two things no bundled OSS plugin can express
-# declaratively: (1) inject a trustworthy X-Creator-Addr from the verified identity while stripping
-# any client-supplied one (ADR-006 anti-spoofing), and (2) rewrite every >=400 response into the
-# LinkMint error envelope {"error":{code,message,details,trace_id}}.
+# declaratively: (1) inject a trustworthy X-Creator-Addr (and, for JWT callers, X-User-Id from the
+# verified token's `sub` — work12 Flow E compliance gate) while stripping any client-supplied ones
+# (ADR-006 anti-spoofing), and (2) rewrite every >=400 response into the LinkMint error envelope
+# {"error":{code,message,details,trace_id}}.
 
 _format_version: "3.0"
 _transform: true
@@ -339,6 +340,7 @@ plugins:
           -- pass-through upstream either (those services ignore X-Creator-Addr, but defense-in-depth).
           kong.service.request.clear_header("X-Creator-Addr")
           kong.service.request.clear_header("X-Partner-Id")
+          kong.service.request.clear_header("X-User-Id")
 
           local route = kong.router.get_route()
           local rn = route and route.name or ""
@@ -352,16 +354,24 @@ plugins:
 
           -- Require authentication. Auth plugins fall through to the anonymous consumer (no
           -- credential) on any failure; reject that here.
-          if not kong.client.get_credential() then
+          local cred = kong.client.get_credential()
+          if not cred then
             kong.service.request.clear_header("Authorization")
             kong.service.request.clear_header("X-API-Key")
             return kong.response.exit(401, { message = "missing or invalid credentials" })
           end
 
-          -- Resolve the caller's on-chain address: JWT claim first, else the consumer's custom_id.
+          -- Resolve the caller's identity: the on-chain address (JWT claim first, else the
+          -- consumer's custom_id) and the user id (JWT `sub`). The payload decode below does NOT
+          -- verify the signature — trust comes from the jwt plugin having authenticated this
+          -- request, so it is gated on the credential being a jwt_secrets row (those carry
+          -- `algorithm`; key-auth credentials don't). Without the gate, a valid API key plus a
+          -- forged Bearer token would inject attacker-chosen identity (auth is OR-composed). An
+          -- API-key partner therefore never gets an X-User-Id and resolves via custom_id below.
           local creator_addr
+          local user_id
           local auth = kong.request.get_header("Authorization")
-          if auth then
+          if auth and cred.algorithm ~= nil then
             local token = auth:match("^[Bb]earer%s+(.+)$")
             if token then
               local payload_b64 = token:match("^[^.]+%.([^.]+)%.")
@@ -372,8 +382,13 @@ plugins:
                 local json = ngx.decode_base64(payload_b64)
                 if json then
                   local claims = require("cjson.safe").decode(json)
-                  if type(claims) == "table" and claims["${GATEWAY_JWT_CREATOR_ADDR_CLAIM}"] then
-                    creator_addr = tostring(claims["${GATEWAY_JWT_CREATOR_ADDR_CLAIM}"])
+                  if type(claims) == "table" then
+                    if claims["${GATEWAY_JWT_CREATOR_ADDR_CLAIM}"] then
+                      creator_addr = tostring(claims["${GATEWAY_JWT_CREATOR_ADDR_CLAIM}"])
+                    end
+                    if type(claims.sub) == "string" and claims.sub ~= "" then
+                      user_id = claims.sub
+                    end
                   end
                 end
               end
@@ -392,6 +407,11 @@ plugins:
 
           if creator_addr and creator_addr ~= "" then
             kong.service.request.set_header("X-Creator-Addr", string.lower(creator_addr))
+          end
+          -- work12 Flow E: paylink-service evaluates the above-threshold KYC/risk gate only when
+          -- the gateway supplies the authenticated user id; absence means the gate is skipped.
+          if user_id then
+            kong.service.request.set_header("X-User-Id", user_id)
           end
       # HEADER_FILTER: flag error responses; capture the trace id; switch to chunked JSON.
       header_filter:
