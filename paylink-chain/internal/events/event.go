@@ -13,21 +13,21 @@ type EventKind string
 
 const (
 	// PayLink events
-	EventPayLinkCreated   EventKind = "paylink.created"
-	EventPayLinkVoted     EventKind = "paylink.voted"
-	EventPayLinkVerified  EventKind = "paylink.verified"
-	EventPayLinkCancelled EventKind = "paylink.cancelled"
+	EventPayLinkCreated        EventKind = "paylink.created"
+	EventPayLinkVoted          EventKind = "paylink.voted"
+	EventPayLinkVerified       EventKind = "paylink.verified"
+	EventPayLinkCancelled      EventKind = "paylink.cancelled"
 	EventPayLinkFailed         EventKind = "paylink.failed"
 	EventPayLinkTransferred    EventKind = "paylink.transferred"
 	EventPayLinkApproved       EventKind = "paylink.approved"
 	EventPayLinkApprovalForAll EventKind = "paylink.approval_for_all"
 
 	// Validator events
-	EventValidatorStaked          EventKind = "validator.staked"
-	EventValidatorActivated       EventKind = "validator.activated"
-	EventValidatorDeactivated     EventKind = "validator.deactivated"
-	EventValidatorUnstakeStarted  EventKind = "validator.unstake_started"
-	EventValidatorUnstakeComplete EventKind = "validator.unstake_completed"
+	EventValidatorStaked           EventKind = "validator.staked"
+	EventValidatorActivated        EventKind = "validator.activated"
+	EventValidatorDeactivated      EventKind = "validator.deactivated"
+	EventValidatorUnstakeStarted   EventKind = "validator.unstake_started"
+	EventValidatorUnstakeComplete  EventKind = "validator.unstake_completed"
 	EventValidatorSlashed          EventKind = "validator.slashed"
 	EventValidatorRewarded         EventKind = "validator.rewarded"
 	EventValidatorVRFKeyRegistered EventKind = "validator.vrf_key_registered"

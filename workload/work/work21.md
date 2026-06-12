@@ -25,10 +25,15 @@ platform-fee invoicing. The single source of "what does this payment cost".
 - work01 Python/FastAPI layout; merchant tiers from work10; event bus (work15); ledger (work16) for fee postings.
 
 ## Acceptance criteria
-- [ ] `/v1/pricing/quote` returns {gross, platform_fee, rail_fee, net, breakdown} per tier + rail.
-- [ ] FX rates fetched, cached (60s), locked at quote; monthly platform-fee invoice generated.
-- [ ] Tests ≥80%; lint/build clean.
-- [ ] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] `/v1/pricing/quote` returns {gross, platform_fee, rail_fee, net, breakdown} per tier + rail.
+- [x] FX rates fetched, cached (60s), locked at quote; monthly platform-fee invoice generated.
+- [x] Tests ≥80%; lint/build clean.
+- [x] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service (Python/FastAPI)" + "Full stack".
+
+## Notes / log
+- 2026-06-12 — audit re-verified: quote shape, FX 60s cache + locked-at-quote, monthly platform-fee
+  invoices, tiers/fx/merchant endpoints all in place; suite fresh-green (76 tests, 92.2%); prometheus
+  scrape target added under work18's audit note; boxes ticked.

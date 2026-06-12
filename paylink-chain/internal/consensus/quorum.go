@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"bytes"
 	"fmt"
 
 	pcrypto "github.com/paylink/paylink-chain/internal/crypto"
@@ -62,6 +63,14 @@ func (qc *QuorumChecker) CheckQuorum(
 		member, ok := memberSet[vote.Validator]
 		if !ok {
 			continue // not a committee member
+		}
+
+		// Bind the proof to the validator's REGISTERED VRF key. VerifyVRFProof
+		// reads the pubkey out of the proof itself, so without this check anyone
+		// could mint a "valid" proof with a fresh key.
+		votePub, err := pcrypto.VRFProofPublicKey(vote.VRFProof)
+		if err != nil || len(member.VRFPublicKey) == 0 || !bytes.Equal(votePub, member.VRFPublicKey) {
+			continue // proof not bound to the member's registered key
 		}
 
 		// Verify VRF proof of the voter's committee membership

@@ -2,7 +2,7 @@
 
 > **Seeded (bug)** — discovered during work06 live e2e. Expand with `/work 35` when picked up.
 
-- **Status:** todo · **Owner:** chain-engineer/service-builder · **Depends on:** 01, 02 · **Flow:** [flow35](../flow/flow35.md)
+- **Status:** done · **Owner:** chain-engineer/service-builder · **Depends on:** 01, 02 · **Flow:** [flow35](../flow/flow35.md)
 - **Phase:** 1 / MVP — integration defect on the core MPesa payment path.
 
 ## Problem
@@ -38,7 +38,17 @@ which is why work04's e2e still passes.
   (orchestrator lifecycle stays a projection of the on-chain PayLink FSM — see work02 notes).
 
 ## Acceptance criteria
-- [ ] `POST /v1/payments` succeeds for a PayLink created via paylink-service with chain-submit enabled.
-- [ ] Terminal/!payable states still rejected with `PAYLINK_NOT_PAYABLE` (or the correct code).
-- [ ] Integration test covers create(submit)→initiate; orchestrator coverage stays ≥80%.
-- [ ] Invariant audit + `/code-review` clean.
+- [x] `POST /v1/payments` succeeds for a PayLink created via paylink-service with chain-submit enabled.
+- [x] Terminal/!payable states still rejected with `PAYLINK_NOT_PAYABLE` (or the correct code).
+- [x] Integration test covers create(submit)→initiate; orchestrator coverage stays ≥80%.
+- [x] Invariant audit + `/code-review` clean.
+
+## Notes / log
+- 2026-06-12 — **done.** `Initiate` now gates on the payable set `{CREATED, PENDING}`
+  (`payment-orchestrator/internal/domain/service.go` `payableStatuses`); terminal states keep 409
+  `PAYLINK_NOT_PAYABLE`. Unit tests: PENDING initiate succeeds + a terminal-state rejection table
+  (domain 88.1% cov). **Live-verified** on `docker compose --profile e2e` (fresh volumes, the
+  ADR-015-hardened chain): create → 201 `PENDING` → `POST /v1/payments` → **201 AWAITING_PAYMENT**
+  (was 409); cancelled PayLink → 409 `PAYLINK_NOT_PAYABLE`; duplicate initiate → 409 `PAYMENT_EXISTS`
+  (A.7 intact); `make e2e` full settle (charge → callback → VERIFIED) still green. Invariant audit
+  8/8 PASS; `/code-review` clean on this fix.

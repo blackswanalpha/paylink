@@ -77,11 +77,18 @@ def signable_bytes(tx_core: dict[str, Any]) -> bytes:
 
 
 def sign_tx(tx_core: dict[str, Any], signer: Signer) -> dict[str, Any]:
-    """Return the full wire transaction: ``tx_core`` + base64 signature + ``0x`` hash."""
+    """Return the full wire transaction: ``tx_core`` + base64 pubkey/signature + ``0x`` hash.
+
+    ``pubKey`` (uncompressed P-256, base64 — mirrors Go ``omitempty``) is required by the
+    chain, which checks it derives ``from`` before verifying the signature.
+    """
     sb = signable_bytes(tx_core)
     digest = hashlib.sha256(sb).digest()
-    return {
+    tx = {
         **tx_core,
         "signature": signer.sign_digest(digest),
         "hash": wire.sha256_hex(sb),
     }
+    if signer.public_key_b64:
+        tx["pubKey"] = signer.public_key_b64
+    return tx

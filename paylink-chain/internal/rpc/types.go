@@ -126,12 +126,12 @@ type TokenStatsResponse struct {
 }
 
 type ChainStatsResponse struct {
-	ChainID        string `json:"chainId"`
-	Height         uint64 `json:"height"`
-	TotalAccounts  int    `json:"totalAccounts"`
-	TotalPayLinks  int    `json:"totalPayLinks"`
-	TotalValidators int   `json:"totalValidators"`
-	TotalProofsUsed int   `json:"totalProofsUsed"`
+	ChainID             string `json:"chainId"`
+	Height              uint64 `json:"height"`
+	TotalAccounts       int    `json:"totalAccounts"`
+	TotalPayLinks       int    `json:"totalPayLinks"`
+	TotalValidators     int    `json:"totalValidators"`
+	TotalProofsUsed     int    `json:"totalProofsUsed"`
 	RequiredValidations uint64 `json:"requiredValidations"`
 }
 

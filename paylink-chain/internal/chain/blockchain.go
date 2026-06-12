@@ -14,7 +14,7 @@ import (
 type Blockchain struct {
 	mu      sync.RWMutex
 	store   storage.KVStore
-	tip     *types.Block   // Current chain tip
+	tip     *types.Block // Current chain tip
 	height  uint64
 	genesis *types.GenesisConfig
 }
@@ -51,7 +51,7 @@ func (bc *Blockchain) Init(genesisBlock *types.Block) error {
 	}
 
 	// Store genesis block
-	return bc.storeBlock(genesisBlock)
+	return bc.storeBlock(genesisBlock, nil)
 }
 
 // AddBlock validates and stores a new block.
@@ -59,7 +59,29 @@ func (bc *Blockchain) AddBlock(block *types.Block) error {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 
-	// Validate block links to current tip
+	if err := bc.checkLinkage(block); err != nil {
+		return err
+	}
+	return bc.storeBlock(block, nil)
+}
+
+// CommitBlock validates linkage and stores a block together with its receipts in a
+// single atomic write batch, so a crash can never persist a block without its
+// receipts and transaction index.
+func (bc *Blockchain) CommitBlock(block *types.Block, receipts []TxReceipt) error {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+
+	if err := bc.checkLinkage(block); err != nil {
+		return err
+	}
+	return bc.storeBlock(block, receipts)
+}
+
+// checkLinkage verifies the block extends the current tip and carries its true hash.
+// The hash is VERIFIED, never recomputed-and-overwritten: a block whose declared hash
+// doesn't match its header bytes is forged or corrupt and must be rejected.
+func (bc *Blockchain) checkLinkage(block *types.Block) error {
 	if bc.tip != nil && block.Header.PreviousHash != bc.tip.Hash {
 		return fmt.Errorf("block previous hash mismatch: expected %s, got %s",
 			bc.tip.Hash, block.Header.PreviousHash)
@@ -74,10 +96,10 @@ func (bc *Blockchain) AddBlock(block *types.Block) error {
 			expectedHeight, block.Header.Height)
 	}
 
-	// Compute and set block hash
-	block.Hash = crypto.SHA256Hash(block.HeaderBytes())
-
-	return bc.storeBlock(block)
+	if expected := crypto.SHA256Hash(block.HeaderBytes()); block.Hash != expected {
+		return fmt.Errorf("block hash mismatch: declared %s, computed %s", block.Hash, expected)
+	}
+	return nil
 }
 
 // GetBlock returns a block by hash.
@@ -183,9 +205,23 @@ func (bc *Blockchain) StoreReceipts(receipts []TxReceipt) error {
 	return nil
 }
 
+// ComputeTxRoot computes the transaction root committed in a block header:
+// SHA256 over the concatenated tx hashes (ZeroHash for an empty block). Producer
+// and validators must use this same function so headers verify everywhere.
+func ComputeTxRoot(txs []types.Transaction) types.Hash {
+	if len(txs) == 0 {
+		return types.ZeroHash
+	}
+	combined := make([]byte, 0, len(txs)*32)
+	for i := range txs {
+		combined = append(combined, txs[i].Hash[:]...)
+	}
+	return crypto.SHA256Hash(combined)
+}
+
 // ── Internal helpers ──
 
-func (bc *Blockchain) storeBlock(block *types.Block) error {
+func (bc *Blockchain) storeBlock(block *types.Block, receipts []TxReceipt) error {
 	data, err := json.Marshal(block)
 	if err != nil {
 		return fmt.Errorf("marshal block: %w", err)
@@ -196,15 +232,25 @@ func (bc *Blockchain) storeBlock(block *types.Block) error {
 	batch.Set(storage.BlockHashKey(block.Hash), uint64ToBytes(block.Header.Height))
 	batch.Set(storage.ChainMetaKey("height"), uint64ToBytes(block.Header.Height))
 
-	if err := batch.Flush(); err != nil {
-		return fmt.Errorf("store block: %w", err)
+	// Transactions and receipts go in the SAME batch as the block: a block must
+	// never be persisted without its tx index and receipts.
+	for i := range block.Transactions {
+		txData, err := json.Marshal(&block.Transactions[i])
+		if err != nil {
+			return fmt.Errorf("marshal tx: %w", err)
+		}
+		batch.Set(storage.TxKey(block.Transactions[i].Hash), txData)
+	}
+	for i := range receipts {
+		rData, err := json.Marshal(&receipts[i])
+		if err != nil {
+			return fmt.Errorf("marshal receipt: %w", err)
+		}
+		batch.Set(storage.ReceiptKey(receipts[i].TxHash), rData)
 	}
 
-	// Store individual transactions
-	for i := range block.Transactions {
-		if err := bc.StoreTx(&block.Transactions[i]); err != nil {
-			return fmt.Errorf("store tx: %w", err)
-		}
+	if err := batch.Flush(); err != nil {
+		return fmt.Errorf("store block: %w", err)
 	}
 
 	bc.tip = block

@@ -13,7 +13,7 @@ type ValidatorInfo struct {
 
 	// Phase 2: VRF and tiering
 	VRFPublicKey []byte `json:"vrfPublicKey,omitempty"` // ED25519 VRF public key (32 bytes)
-	Tier         string `json:"tier,omitempty"`          // "LIGHT", "STANDARD", "SENTINEL"
+	Tier         string `json:"tier,omitempty"`         // "LIGHT", "STANDARD", "SENTINEL"
 }
 
 // Validator tier constants.

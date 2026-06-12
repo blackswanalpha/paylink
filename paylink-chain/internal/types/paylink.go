@@ -35,14 +35,14 @@ type PayLink struct {
 	ID            Hash            `json:"id"`
 	Creator       Address         `json:"creator"`
 	Receiver      Address         `json:"receiver"`
-	Owner         Address         `json:"owner"`                   // current owner (initially = Creator)
-	Approved      Address         `json:"approved"`                // single-paylink approval (zero = none)
+	Owner         Address         `json:"owner"`    // current owner (initially = Creator)
+	Approved      Address         `json:"approved"` // single-paylink approval (zero = none)
 	Amount        uint64          `json:"amount"`
-	Expiry        int64           `json:"expiry"`                  // Unix timestamp
+	Expiry        int64           `json:"expiry"` // Unix timestamp
 	Status        Status          `json:"status"`
 	MetadataHash  Hash            `json:"metadataHash"`
 	CreatedAt     int64           `json:"createdAt"`
 	VoteCount     uint64          `json:"voteCount"`
-	TransferCount uint64          `json:"transferCount"`           // number of ownership transfers
-	Rules         json.RawMessage `json:"rules,omitempty"`         // immutable after creation
+	TransferCount uint64          `json:"transferCount"`   // number of ownership transfers
+	Rules         json.RawMessage `json:"rules,omitempty"` // immutable after creation
 }

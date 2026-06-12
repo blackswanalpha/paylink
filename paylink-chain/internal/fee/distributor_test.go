@@ -70,8 +70,10 @@ func TestDistributor_EqualStakeDistribution(t *testing.T) {
 		t.Errorf("treasury balance = %d, want 60", treasuryBal)
 	}
 
-	// Total supply should increase by validator+treasury mints but decrease by burn
-	expectedSupply := initialSupply + 210 + 60 - 30
+	// Total supply increases by exactly what was minted (validators + treasury).
+	// The burn share is never minted, so it must NOT decrement supply — supply
+	// always equals the sum of balances and stakes.
+	expectedSupply := initialSupply + 210 + 60
 	if s.TotalSupply() != expectedSupply {
 		t.Errorf("total supply = %d, want %d", s.TotalSupply(), expectedSupply)
 	}

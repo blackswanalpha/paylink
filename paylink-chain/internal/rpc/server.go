@@ -12,15 +12,17 @@ import (
 
 // Server is the JSON-RPC HTTP server.
 type Server struct {
-	handlers *Handlers
-	server   *http.Server
+	handlers   *Handlers
+	server     *http.Server
+	corsOrigin string // Access-Control-Allow-Origin value; empty disables the header
 }
 
 // NewServer creates a new JSON-RPC server.
 // An optional wsHandler is mounted at /ws if non-nil.
 func NewServer(handlers *Handlers, addr string, wsHandler ...http.HandlerFunc) *Server {
 	s := &Server{
-		handlers: handlers,
+		handlers:   handlers,
+		corsOrigin: "*", // devnet default; production sets a real origin (or "") via SetCORSOrigin
 	}
 
 	mux := http.NewServeMux()
@@ -39,6 +41,12 @@ func NewServer(handlers *Handlers, addr string, wsHandler ...http.HandlerFunc) *
 	}
 
 	return s
+}
+
+// SetCORSOrigin sets the Access-Control-Allow-Origin header value.
+// Empty string disables the header entirely.
+func (s *Server) SetCORSOrigin(origin string) {
+	s.corsOrigin = origin
 }
 
 // Start starts the HTTP server.
@@ -62,7 +70,9 @@ func (s *Server) handleRPC(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// CORS headers
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if s.corsOrigin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", s.corsOrigin)
+	}
 	w.Header().Set("Content-Type", "application/json")
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1MB limit

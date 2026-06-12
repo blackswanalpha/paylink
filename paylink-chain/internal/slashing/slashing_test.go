@@ -138,7 +138,9 @@ func TestSlashing_DoubleSign_WrongKey(t *testing.T) {
 	}
 }
 
-func TestSlashing_Liveness(t *testing.T) {
+func TestSlashing_LivenessRejected(t *testing.T) {
+	// Liveness claims carry no cryptographic proof, so accepting them would let
+	// anyone slash any validator. The detector must reject them outright.
 	addr := types.Address{0x01}
 	s := setupSlashingState(t, addr, 100_000)
 
@@ -150,51 +152,8 @@ func TestSlashing_Liveness(t *testing.T) {
 	rawData, _ := json.Marshal(ev)
 
 	detector := NewSlashingDetector(s)
-	action, err := detector.ProcessEvidence(EvidenceLiveness, addr, rawData)
-	if err != nil {
-		t.Fatalf("ProcessEvidence: %v", err)
-	}
-
-	// 3 * 5% = 15% of 100,000 = 15,000
-	if action.Amount != 15_000 {
-		t.Errorf("amount = %d, want 15000", action.Amount)
-	}
-}
-
-func TestSlashing_Liveness_CappedAt100Pct(t *testing.T) {
-	addr := types.Address{0x02}
-	s := setupSlashingState(t, addr, 100_000)
-
-	ev := LivenessEvidence{
-		MissedCount: 50, // 50 * 5% = 250%, capped at 100%
-		StartHeight: 100,
-		EndHeight:   149,
-	}
-	rawData, _ := json.Marshal(ev)
-
-	detector := NewSlashingDetector(s)
-	action, err := detector.ProcessEvidence(EvidenceLiveness, addr, rawData)
-	if err != nil {
-		t.Fatalf("ProcessEvidence: %v", err)
-	}
-
-	// Capped at 100% = 100,000
-	if action.Amount != 100_000 {
-		t.Errorf("amount = %d, want 100000", action.Amount)
-	}
-}
-
-func TestSlashing_Liveness_ZeroMissed(t *testing.T) {
-	addr := types.Address{0x03}
-	s := setupSlashingState(t, addr, 100_000)
-
-	ev := LivenessEvidence{MissedCount: 0}
-	rawData, _ := json.Marshal(ev)
-
-	detector := NewSlashingDetector(s)
-	_, err := detector.ProcessEvidence(EvidenceLiveness, addr, rawData)
-	if err == nil {
-		t.Fatal("expected error for 0 missed")
+	if _, err := detector.ProcessEvidence(EvidenceLiveness, addr, rawData); err == nil {
+		t.Fatal("liveness evidence must be rejected: claims are not verifiable")
 	}
 }
 

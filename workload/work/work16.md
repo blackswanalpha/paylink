@@ -2,7 +2,7 @@
 
 > **Seeded** — expand with `/work 16` when picked up.
 
-- **Status:** todo · **Owner:** service-builder · **Stack:** shared Postgres schema + Python/Go libs · **Depends on:** 15 · **Flow:** [flow16](../flow/flow16.md)
+- **Status:** done · **Owner:** service-builder · **Stack:** shared Postgres schema + Python/Go libs · **Depends on:** 15 · **Flow:** [flow16](../flow/flow16.md)
 - **Phase:** 1 / MVP (cross-cutting) · **Spec:** backendfeatures.md §"Data Consistency & Ledger"
 
 ## Goal
@@ -27,11 +27,20 @@ shared (read/write) across services, giving a full audit trail for reconciliatio
 - The event bus (work15) to react to `chain.fee.*`, `payment.confirmed`, etc.
 
 ## Acceptance criteria
-- [ ] Posting helper writes balanced DR/CR atomically; unbalanced posts rejected.
-- [ ] Append-only enforced (no UPDATE/DELETE path); corrections via reversing entries.
-- [ ] Read queries support reconciliation/reporting; tests ≥80%.
-- [ ] Passes the relevant [definition-of-done.md](../definition-of-done.md) checklist(s).
+- [x] Posting helper writes balanced DR/CR atomically; unbalanced posts rejected.
+- [x] Append-only enforced (no UPDATE/DELETE path); corrections via reversing entries.
+- [x] Read queries support reconciliation/reporting; tests ≥80%.
+- [x] Passes the relevant [definition-of-done.md](../definition-of-done.md) checklist(s).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service": post a balanced entry group, attempt an
 unbalanced one (rejected), attempt an edit (rejected); confirm reversing-entry correction.
+
+## Notes / log
+- Shipped as the byte-identical sibling libs `linkmint-backend/ledger-go` + `ledger-python` over the
+  shared append-only `ledger` schema: DB trigger raises P0001 on UPDATE/DELETE, `Post()` validates
+  DR==CR before a single INSERT, `Reverse()` posts correcting entries, read APIs (Balance,
+  IsBalanced, EntriesBy*) serve work26/27. One-shot `ledger-migrate`; no service posts yet (per-service
+  posting is out of scope here; settlement-service is the intended first writer).
+- 2026-06-12 — audit: header was stale (`todo` despite the libs + CI having shipped); flipped to done.
+  Suites fresh-green: ledger-go 84.9%, ledger-python 100%; boxes ticked.

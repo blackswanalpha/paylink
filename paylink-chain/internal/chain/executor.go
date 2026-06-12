@@ -3,7 +3,9 @@ package chain
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 
+	"github.com/paylink/paylink-chain/internal/crypto"
 	"github.com/paylink/paylink-chain/internal/events"
 	"github.com/paylink/paylink-chain/internal/fee"
 	"github.com/paylink/paylink-chain/internal/fsm"
@@ -28,7 +30,8 @@ type Executor struct {
 	eventBus   *events.Bus // nil = no events emitted
 	plFSM      *fsm.Machine
 	valFSM     *fsm.Machine
-	pendingEvt []*events.Event
+	pendingEvt []*events.Event // events emitted by the tx currently executing
+	blockEvt   []*events.Event // events from committed txs, awaiting block commit
 }
 
 // NewExecutor creates a new transaction executor.
@@ -49,21 +52,37 @@ func (e *Executor) emit(evt *events.Event) {
 	}
 }
 
-// flushEvents publishes all buffered events and clears the buffer.
-func (e *Executor) flushEvents(blockHeight uint64) {
-	if e.eventBus == nil {
-		return
-	}
-	for _, evt := range e.pendingEvt {
-		evt.BlockHeight = blockHeight
-		e.eventBus.Publish(evt)
-	}
+// commitTxEvents moves the current tx's events into the block buffer.
+func (e *Executor) commitTxEvents() {
+	e.blockEvt = append(e.blockEvt, e.pendingEvt...)
 	e.pendingEvt = e.pendingEvt[:0]
 }
 
-// discardEvents clears the buffer without publishing.
-func (e *Executor) discardEvents() {
+// discardTxEvents clears the current tx's events without publishing.
+func (e *Executor) discardTxEvents() {
 	e.pendingEvt = e.pendingEvt[:0]
+}
+
+// FlushEvents publishes all events buffered for the current block and clears the buffer.
+// Callers invoke this only after the block has been durably committed, so subscribers
+// never observe events for state that was rolled back.
+func (e *Executor) FlushEvents(blockHeight uint64) {
+	if e.eventBus == nil {
+		e.blockEvt = e.blockEvt[:0]
+		return
+	}
+	for _, evt := range e.blockEvt {
+		evt.BlockHeight = blockHeight
+		e.eventBus.Publish(evt)
+	}
+	e.blockEvt = e.blockEvt[:0]
+}
+
+// DiscardEvents clears all buffered events (tx-level and block-level) without publishing.
+// Callers invoke this when a block fails to commit and its state has been reverted.
+func (e *Executor) DiscardEvents() {
+	e.pendingEvt = e.pendingEvt[:0]
+	e.blockEvt = e.blockEvt[:0]
 }
 
 // evaluateRules parses and evaluates rules attached to a PayLink.
@@ -81,6 +100,8 @@ func (e *Executor) evaluateRules(pl *types.PayLink, ctx *rules.EvalContext) erro
 
 // ExecuteTx executes a single transaction and returns a receipt.
 // The block timestamp is used for time-dependent operations.
+// It does NOT verify the transaction signature — callers must verify first
+// (ExecuteBlock does; so do the RPC and P2P admission paths).
 func (e *Executor) ExecuteTx(tx *types.Transaction, blockTimestamp int64) TxReceipt {
 	receipt := TxReceipt{TxHash: tx.Hash, Success: false}
 
@@ -270,7 +291,7 @@ func (e *Executor) executeSubmitValidation(tx *types.Transaction, blockTimestamp
 		voters := e.state.GetVotersForPayLink(p.PayLinkID)
 		if err := e.evaluateRules(pl, &rules.EvalContext{
 			Action:         rules.ActionSettle,
-			BlockTimestamp:  blockTimestamp,
+			BlockTimestamp: blockTimestamp,
 			Sender:         tx.From,
 			PayLinkOwner:   pl.Owner,
 			PayLinkCreator: pl.Creator,
@@ -322,7 +343,7 @@ func (e *Executor) executeCancelPayLink(tx *types.Transaction, blockTimestamp in
 	// Evaluate rules before cancellation
 	if err := e.evaluateRules(pl, &rules.EvalContext{
 		Action:         rules.ActionCancel,
-		BlockTimestamp:  blockTimestamp,
+		BlockTimestamp: blockTimestamp,
 		Sender:         tx.From,
 		PayLinkOwner:   pl.Owner,
 		PayLinkCreator: pl.Creator,
@@ -402,7 +423,7 @@ func (e *Executor) executeTransferPayLink(tx *types.Transaction, blockTimestamp 
 	// Evaluate rules before transfer
 	if err := e.evaluateRules(pl, &rules.EvalContext{
 		Action:         rules.ActionTransfer,
-		BlockTimestamp:  blockTimestamp,
+		BlockTimestamp: blockTimestamp,
 		Sender:         tx.From,
 		PayLinkOwner:   pl.Owner,
 		PayLinkCreator: pl.Creator,
@@ -730,7 +751,9 @@ func (e *Executor) collectAndDistributeFees(plID types.Hash, amount uint64, txHa
 	dist := fee.NewDistributor(e.state, e.state.TreasuryAddress())
 	payouts, err := dist.DistributeFees(fb, voters)
 	if err != nil {
-		// Fee distribution failure is non-fatal -- log but don't revert settlement
+		// Fee distribution failure is non-fatal -- the settlement stands, but the
+		// missed payout must be visible to operators.
+		log.Printf("fee distribution failed for paylink %s (fee %d): %v", plID, fb.TotalFee, err)
 		return
 	}
 
@@ -807,6 +830,13 @@ func (e *Executor) executeSubmitEvidence(tx *types.Transaction) error {
 		return fmt.Errorf("invalid evidence: %w", err)
 	}
 
+	// Anti-replay: one slash per offense, no matter how often (or by whom) the
+	// same evidence is resubmitted.
+	if e.state.IsEvidenceProcessed(action.EvidenceID) {
+		return fmt.Errorf("evidence already processed: %s", action.EvidenceID)
+	}
+	e.state.MarkEvidenceProcessed(action.EvidenceID)
+
 	// Execute the slash
 	wasActive := e.state.IsActiveValidator(action.Validator)
 	if err := e.state.Slash(action.Validator, action.Amount); err != nil {
@@ -835,19 +865,26 @@ func (e *Executor) executeSubmitEvidence(tx *types.Transaction) error {
 
 // ExecuteBlock executes all transactions in a block, returning receipts.
 // Invalid transactions are skipped (their receipts show errors).
+// Every transaction must carry a valid signature (pubkey bound to From); unsigned or
+// forged transactions fail without touching state. Events are buffered per block —
+// callers must FlushEvents after the block commits (or DiscardEvents on failure).
 func (e *Executor) ExecuteBlock(txs []types.Transaction, blockTimestamp int64, blockHeight uint64) []TxReceipt {
 	receipts := make([]TxReceipt, len(txs))
 	for i := range txs {
+		if err := crypto.VerifyTx(&txs[i]); err != nil {
+			receipts[i] = TxReceipt{TxHash: txs[i].Hash, Error: "invalid signature: " + err.Error()}
+			continue
+		}
 		snapID := e.state.Snapshot()
-		e.discardEvents()
+		e.discardTxEvents()
 		receipt := e.ExecuteTx(&txs[i], blockTimestamp)
 		if !receipt.Success {
 			// Revert state on failed tx
 			_ = e.state.Revert(snapID)
-			e.discardEvents()
+			e.discardTxEvents()
 		} else {
-			e.state.DiscardSnapshots()
-			e.flushEvents(blockHeight)
+			e.state.DiscardSnapshot(snapID)
+			e.commitTxEvents()
 		}
 		receipts[i] = receipt
 	}

@@ -47,13 +47,15 @@ func TestRPC_GetTransactionReceipt(t *testing.T) {
 func TestRPC_GetTransactionReceiptFailed(t *testing.T) {
 	node := startTestNode(t)
 
-	bob := types.HexToAddress("0x0000000000000000000000000000000000000b0b")
+	// bob sends, so he needs a real key (valid signature, wrong nonce)
+	bob := node.newActor(t)
 
-	// Send tx with bad nonce (will fail and still get receipt stored)
+	// Send tx with bad nonce (will fail and still get receipt stored).
+	// A failed tx doesn't produce a block, so wait on its receipt instead.
 	txHash := sendTx(t, node, types.TxTransfer, bob, 99, types.TransferPayload{
 		To: node.adminAddr, Amount: 1000,
 	})
-	waitForBlock(t, node, 1, 3*time.Second)
+	waitForReceipt(t, node, txHash, 3*time.Second)
 
 	result := rpcCall(t, node.rpcURL, "paylink_getTransactionReceipt", map[string]string{
 		"hash": txHash,
@@ -104,7 +106,7 @@ func TestRPC_GetNonce(t *testing.T) {
 func TestRPC_GetPayLinksByCreator(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 
 	// Create 3 PayLinks from the same merchant
@@ -137,8 +139,8 @@ func TestRPC_GetPayLinksByCreator(t *testing.T) {
 func TestRPC_GetPayLinksByReceiver(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant1 := types.HexToAddress("0x0000000000000000000000000000000000000003")
-	merchant2 := types.HexToAddress("0x0000000000000000000000000000000000000005")
+	merchant1 := node.newActor(t)
+	merchant2 := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 
 	// Two different merchants send to the same receiver
@@ -170,7 +172,7 @@ func TestRPC_GetPayLinksByReceiver(t *testing.T) {
 func TestRPC_GetPayLinksByStatus(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 
 	// Create 2 PayLinks
@@ -294,10 +296,10 @@ func TestRPC_GetBlockTransactions(t *testing.T) {
 func TestRPC_HasVoted(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
-	v1 := types.HexToAddress("0x0000000000000000000000000000000000000010")
-	v2 := types.HexToAddress("0x0000000000000000000000000000000000000011")
+	v1 := node.newActor(t)
+	v2 := node.newActor(t)
 	plID := pcrypto.SHA256Hash([]byte("PLK-HASVOTED-001"))
 	proofHash := pcrypto.SHA256Hash([]byte("proof-hasvoted"))
 
@@ -344,10 +346,10 @@ func TestRPC_HasVoted(t *testing.T) {
 func TestRPC_GetVoters(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
-	v1 := types.HexToAddress("0x0000000000000000000000000000000000000010")
-	v2 := types.HexToAddress("0x0000000000000000000000000000000000000011")
+	v1 := node.newActor(t)
+	v2 := node.newActor(t)
 	plID := pcrypto.SHA256Hash([]byte("PLK-VOTERS-001"))
 	proofHash := pcrypto.SHA256Hash([]byte("proof-voters"))
 
@@ -393,8 +395,8 @@ func TestRPC_GetVoters(t *testing.T) {
 func TestRPC_StakingStats(t *testing.T) {
 	node := startTestNode(t)
 
-	v1 := types.HexToAddress("0x0000000000000000000000000000000000000010")
-	v2 := types.HexToAddress("0x0000000000000000000000000000000000000011")
+	v1 := node.newActor(t)
+	v2 := node.newActor(t)
 
 	// Fund and stake 2 validators with different amounts
 	nonce := uint64(0)
@@ -446,7 +448,7 @@ func TestRPC_TokenStats(t *testing.T) {
 func TestRPC_ChainStats(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 	bob := types.HexToAddress("0x0000000000000000000000000000000000000b0b")
 
@@ -503,7 +505,7 @@ func TestRPC_NodeInfo(t *testing.T) {
 func TestRPC_PayLinkPagination(t *testing.T) {
 	node := startTestNode(t)
 
-	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	merchant := node.newActor(t)
 	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
 
 	// Create 5 PayLinks

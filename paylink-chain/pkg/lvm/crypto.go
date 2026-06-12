@@ -70,17 +70,23 @@ func PublicKeyFromHex(s string) (*ecdsa.PublicKey, error) {
 	return crypto.UnmarshalPublicKey(b)
 }
 
-// SignTx fills tx.Hash and tx.Signature exactly as the chain's paylink_sendTransaction recomputes
-// them: Hash = SHA256(SignableBytes()), Signature = Sign(Hash, key). tx.Payload must already be set
-// (via the Build* helpers). The chain does not yet verify the signature (ADR-005), but we sign for
-// forward-compatibility and a correct From-derived hash. Idempotent.
+// SignTx fills tx.PubKey, tx.Hash and tx.Signature exactly as the chain verifies them:
+// Hash = SHA256(SignableBytes()), Signature = Sign(Hash, key), PubKey = the uncompressed
+// P-256 public key (which the chain checks derives tx.From). tx.Payload must already be
+// set (via the Build* helpers). The chain REJECTS unsigned transactions at admission and
+// in block execution (supersedes ADR-005). Idempotent.
 func SignTx(tx *Transaction, key *ecdsa.PrivateKey) error {
 	h := crypto.SHA256Hash(tx.SignableBytes())
 	sig, err := crypto.Sign(h, key)
 	if err != nil {
 		return fmt.Errorf("sign tx: %w", err)
 	}
+	tx.PubKey = crypto.MarshalPublicKey(&key.PublicKey)
 	tx.Hash = h
 	tx.Signature = sig
 	return nil
 }
+
+// VerifyTx authenticates a transaction the same way the chain does at admission:
+// pubkey present and deriving From, hash = SHA256(SignableBytes), valid signature.
+func VerifyTx(tx *Transaction) error { return crypto.VerifyTx(tx) }

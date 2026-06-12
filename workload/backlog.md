@@ -33,14 +33,14 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 13 | [work13](work/work13.md) / [flow13](flow/flow13.md) | 2.17 Audit-log service | Go/chi | 15,16 | done |
 | 14 | [work14](work/work14.md) / [flow14](flow/flow14.md) | 2.18 Notification (SMS/email) | Python/FastAPI | 15 | done |
 | 08 | [work08](work/work08.md) / [flow08](flow/flow08.md) | docker-compose + CI (incremental) | infra | 01–14 | done |
-| 35 | [work35](work/work35.md) / [flow35](flow/flow35.md) | fix: orchestrator rejects payable (PENDING) PayLinks | Go/chi | 01,02 | todo |
+| 35 | [work35](work/work35.md) / [flow35](flow/flow35.md) | fix: orchestrator rejects payable (PENDING) PayLinks | Go/chi | 01,02 | done |
 
 ## Phase 2 — Beta
 
 | # | Work / Flow | Service (backendfeatures.md) | Stack | Depends on | Status |
 |---|-------------|------------------------------|-------|------------|--------|
 | 19 | [work19](work/work19.md) / [flow19](flow/flow19.md) | 2.19 Invoice (invoices) | Python/FastAPI | 01 | done |
-| 20 | [work20](work/work20.md) / [flow20](flow/flow20.md) | 2.7 Escrow manager | Go/chi | 01,03 | todo |
+| 20 | [work20](work/work20.md) / [flow20](flow/flow20.md) | 2.7 Escrow manager | Go/chi | 01,03 | done |
 | 21 | [work21](work/work21.md) / [flow21](flow/flow21.md) | 2.8 Fee-pricing service | Python/FastAPI | 10 | done |
 | 22 | [work22](work/work22.md) / [flow22](flow/flow22.md) | 2.9 Refund-dispute service | Python/FastAPI | 02,23 | todo |
 | 23 | [work23](work/work23.md) / [flow23](flow/flow23.md) | 2.12 Settlement service | Go/chi | 02,10,16 | todo |
@@ -614,3 +614,36 @@ never expands the active item ([scope.md](scope.md)).
   current bus consumers self-commit and already carry domain-keyed idempotency (notification
   `deliveries_dedupe_uidx`; compliance activity-ledger), so a forced wrap would break atomicity; same row
   covers the first prod Go bus-consumer adopter (none exists yet — only a chain-event-mirror test consumer).
+- 2026-06-12 — **work01–07 audit + work35 → done.** Audited work01–07 against their acceptance
+  criteria + DoD: all seven verified achieved (all builds/tests green; SDK 127 tests / 98.66% cov;
+  orchestrator 15 pkgs; proof-validator + mpesa + chain suites pass; paylink-service ruff clean,
+  90 unit tests). Synced stale doc state: work01/02/06 headers todo→done, acceptance boxes ticked
+  (work01/02/03/05/06). **Committed the ADR-015 chain hardening** (47 files: mandatory tx/block
+  signatures w/ pubKey, startup replay, follower BlockProcessor, deterministic fees, supply
+  accounting, evidence anti-replay — see decisions.md) + the paylink-service pubKey signer.
+  **Fixed work35**: orchestrator `Initiate` accepts `{CREATED, PENDING}`; live e2e on fresh volumes
+  proved create→201 PENDING→initiate→**201 AWAITING_PAYMENT** (was always 409), cancelled→409,
+  duplicate→409 `PAYMENT_EXISTS`, and the full MPesa settle e2e stays green against the hardened
+  chain (which also live-proves the Python signer vs enforced sig verification). Invariants 8/8 PASS.
+  Deferred (low, filed here): block producer persists failed-tx receipts tagged with a BlockHeight
+  no block ends up occupying when ALL drained txs fail (`consensus/block_producer.go` all-failed
+  path) — tag with a sentinel height in a follow-up; known Phase-2 backlog unchanged (RFC 9381
+  ECVRF before economic committee weight, fork choice, ChainID in SignableBytes if multi-chain).
+- 2026-06-12 — **work15–21 audit + work20 → done.** Audited work15–21 against acceptance criteria +
+  DoD with fresh suite runs (all green vs the ADR-015 chain: eventbus-go 84.0 / ledger-go 84.9 /
+  idempotency-go 88.6 / telemetry-go 97.4 / chain-event-mirror 96.2; eventbus-py 99.3 / ledger-py 100 /
+  idempotency-py 97.6 / telemetry-py 98.1; invoice 95.2 / fee-pricing 92.2). Synced stale doc state:
+  work16/17 headers todo→done; boxes ticked across work15–19/21. Fixed a work18 gap: prometheus.yml
+  was missing invoice-subscription:8096 + fee-pricing-service:8097 (metrics silently dropped) —
+  targets added. work17's consumer-dedupe verified genuinely wired (RedisDedupe in the notification/
+  invoice/fee-pricing bus consumers). **Built work20 escrow-manager** (the one unbuilt item):
+  Go/chi 8098, `escrow` schema, 3 condition types, the repo's first Go bus consumer
+  (`chain.paylink.verified`, group `escrow-manager`) + first transactional `DbDedupe`
+  (`escrow.processed_events`, same pgx tx as the funded-write), CAS sweeper for time-lock/timeout,
+  view-scoped GET; cover 94.0%, invariants 8/8 PASS, Kong route + gate (gateway suite 33 passed),
+  live compose smoke (funded release via rpk-produced chain event; timeout refund). Follow-ups
+  filed: Go transactional-outbox (publish-after-commit is at-most-once — pre-existing pattern, now
+  also drops escrow release/refund instructions on a crash in the commit→publish window); funding
+  amount cross-check vs chain RPC (mirror payload has no amount); escrow-created-after-settlement
+  never auto-funds (needs a reconcile read); dispute resolution = work22 (the CONDITIONS_MET→Refund
+  FSM seam is reserved for it).

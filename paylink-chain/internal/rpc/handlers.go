@@ -113,8 +113,18 @@ func (h *Handlers) sendTransaction(req *Request) *Response {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, "invalid transaction: "+err.Error())
 	}
 
+	if len(tx.Payload) > types.MaxTxPayloadBytes {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams,
+			fmt.Sprintf("payload too large: %d bytes (max %d)", len(tx.Payload), types.MaxTxPayloadBytes))
+	}
+
 	// Compute tx hash
 	tx.Hash = pcrypto.SHA256Hash(tx.SignableBytes())
+
+	// Authenticate: pubkey must derive From and the signature must cover the hash
+	if err := pcrypto.VerifyTx(&tx); err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, "signature verification failed: "+err.Error())
+	}
 
 	if err := h.mempool.Add(&tx); err != nil {
 		return NewErrorResponse(req.ID, ErrCodeInternal, err.Error())
@@ -131,7 +141,10 @@ func (h *Handlers) getTransaction(req *Request) *Response {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
 
-	hash := types.HexToHash(params.Hash)
+	hash, err := types.ParseHash(params.Hash)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	tx, err := h.blockchain.GetTx(hash)
 	if err != nil {
 		return NewErrorResponse(req.ID, ErrCodeInternal, err.Error())
@@ -158,7 +171,10 @@ func (h *Handlers) getBlock(req *Request) *Response {
 	if params.Height != nil {
 		block, err = h.blockchain.GetBlockByHeight(*params.Height)
 	} else if params.Hash != nil {
-		hash := types.HexToHash(*params.Hash)
+		hash, perr := types.ParseHash(*params.Hash)
+		if perr != nil {
+			return NewErrorResponse(req.ID, ErrCodeInvalidParams, perr.Error())
+		}
 		block, err = h.blockchain.GetBlock(hash)
 	} else {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, "specify height or hash")
@@ -190,7 +206,10 @@ func (h *Handlers) getPayLink(req *Request) *Response {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
 
-	id := types.HexToHash(params.ID)
+	id, err := types.ParseHash(params.ID)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	pl := h.state.GetPayLink(id)
 	if pl == nil {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, "paylink not found")
@@ -221,7 +240,10 @@ func (h *Handlers) getAccount(req *Request) *Response {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
 
-	addr := types.HexToAddress(params.Address)
+	addr, err := types.ParseAddress(params.Address)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	acc := h.state.GetAccount(addr)
 	balance := uint64(0)
 	nonce := uint64(0)
@@ -245,7 +267,10 @@ func (h *Handlers) getValidator(req *Request) *Response {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
 
-	addr := types.HexToAddress(params.Address)
+	addr, err := types.ParseAddress(params.Address)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	v := h.state.GetValidator(addr)
 	if v == nil {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, "validator not found")
@@ -293,7 +318,10 @@ func (h *Handlers) isProofUsed(req *Request) *Response {
 	if err := json.Unmarshal(req.Params, &params); err != nil {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
-	hash := types.HexToHash(params.ProofHash)
+	hash, err := types.ParseHash(params.ProofHash)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	return NewResponse(req.ID, h.state.IsProofUsed(hash))
 }
 
@@ -304,7 +332,10 @@ func (h *Handlers) getVoteCount(req *Request) *Response {
 	if err := json.Unmarshal(req.Params, &params); err != nil {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
-	id := types.HexToHash(params.PayLinkID)
+	id, err := types.ParseHash(params.PayLinkID)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	return NewResponse(req.ID, h.state.GetVoteCount(id))
 }
 
@@ -326,7 +357,10 @@ func (h *Handlers) getTransactionReceipt(req *Request) *Response {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
 
-	hash := types.HexToHash(params.Hash)
+	hash, err := types.ParseHash(params.Hash)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	receipt, err := h.blockchain.GetReceipt(hash)
 	if err != nil {
 		return NewErrorResponse(req.ID, ErrCodeInternal, err.Error())
@@ -352,7 +386,10 @@ func (h *Handlers) getNonce(req *Request) *Response {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
 
-	addr := types.HexToAddress(params.Address)
+	addr, err := types.ParseAddress(params.Address)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	nonce := h.state.GetNonce(addr)
 	return NewResponse(req.ID, nonce)
 }
@@ -367,7 +404,10 @@ func (h *Handlers) getPayLinksByCreator(req *Request) *Response {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
 
-	addr := types.HexToAddress(params.Creator)
+	addr, err := types.ParseAddress(params.Creator)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	ids := h.state.GetPayLinksByCreator(addr)
 	paylinks := h.resolvePayLinks(ids, params.Limit, params.Offset)
 	return NewResponse(req.ID, paylinks)
@@ -383,7 +423,10 @@ func (h *Handlers) getPayLinksByReceiver(req *Request) *Response {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
 
-	addr := types.HexToAddress(params.Receiver)
+	addr, err := types.ParseAddress(params.Receiver)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	ids := h.state.GetPayLinksByReceiver(addr)
 	paylinks := h.resolvePayLinks(ids, params.Limit, params.Offset)
 	return NewResponse(req.ID, paylinks)
@@ -473,8 +516,14 @@ func (h *Handlers) hasVoted(req *Request) *Response {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
 
-	plId := types.HexToHash(params.PayLinkID)
-	validator := types.HexToAddress(params.Validator)
+	plId, err := types.ParseHash(params.PayLinkID)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
+	validator, err := types.ParseAddress(params.Validator)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	return NewResponse(req.ID, h.state.HasVoted(plId, validator))
 }
 
@@ -486,7 +535,10 @@ func (h *Handlers) getVoters(req *Request) *Response {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
 
-	plId := types.HexToHash(params.PayLinkID)
+	plId, err := types.ParseHash(params.PayLinkID)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	voters := h.state.GetVotersForPayLink(plId)
 
 	voterHexes := make([]string, len(voters))
@@ -622,7 +674,10 @@ func (h *Handlers) getPayLinksByOwner(req *Request) *Response {
 	if err := json.Unmarshal(req.Params, &params); err != nil {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
-	owner := types.HexToAddress(params.Owner)
+	owner, err := types.ParseAddress(params.Owner)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	ids := h.state.GetPayLinksByOwner(owner)
 	limit := params.Limit
 	if limit <= 0 {
@@ -638,7 +693,10 @@ func (h *Handlers) ownerOf(req *Request) *Response {
 	if err := json.Unmarshal(req.Params, &params); err != nil {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
-	id := types.HexToHash(params.PayLinkID)
+	id, err := types.ParseHash(params.PayLinkID)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	owner, ok := h.state.GetPayLinkOwner(id)
 	if !ok {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, "paylink not found")
@@ -653,7 +711,10 @@ func (h *Handlers) balanceOf(req *Request) *Response {
 	if err := json.Unmarshal(req.Params, &params); err != nil {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
-	owner := types.HexToAddress(params.Owner)
+	owner, err := types.ParseAddress(params.Owner)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	count := h.state.OwnerPayLinkCount(owner)
 	return NewResponse(req.ID, map[string]int{"balance": count})
 }
@@ -665,7 +726,10 @@ func (h *Handlers) getApproved(req *Request) *Response {
 	if err := json.Unmarshal(req.Params, &params); err != nil {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
-	id := types.HexToHash(params.PayLinkID)
+	id, err := types.ParseHash(params.PayLinkID)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	pl := h.state.GetPayLink(id)
 	if pl == nil {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, "paylink not found")
@@ -681,8 +745,14 @@ func (h *Handlers) isApprovedForAll(req *Request) *Response {
 	if err := json.Unmarshal(req.Params, &params); err != nil {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
-	owner := types.HexToAddress(params.Owner)
-	operator := types.HexToAddress(params.Operator)
+	owner, err := types.ParseAddress(params.Owner)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
+	operator, err := types.ParseAddress(params.Operator)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	approved := h.state.IsOperatorApproved(owner, operator)
 	return NewResponse(req.ID, map[string]bool{"approved": approved})
 }
@@ -694,7 +764,10 @@ func (h *Handlers) getPayLinkRules(req *Request) *Response {
 	if err := json.Unmarshal(req.Params, &params); err != nil {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
 	}
-	id := types.HexToHash(params.PayLinkID)
+	id, err := types.ParseHash(params.PayLinkID)
+	if err != nil {
+		return NewErrorResponse(req.ID, ErrCodeInvalidParams, err.Error())
+	}
 	pl := h.state.GetPayLink(id)
 	if pl == nil {
 		return NewErrorResponse(req.ID, ErrCodeInvalidParams, "paylink not found")

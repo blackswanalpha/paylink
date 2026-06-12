@@ -1,0 +1,5 @@
+.env
+coverage.out
+cov.pkg.out
+/escrow-manager
+/out/

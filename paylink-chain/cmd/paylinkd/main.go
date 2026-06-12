@@ -36,11 +36,13 @@ func main() {
 	blockIntervalMs := flag.Int("block-interval", 1000, "Block production interval in milliseconds")
 	wsEnabled := flag.Bool("ws", true, "Enable WebSocket event stream")
 	wsMaxConns := flag.Int("ws-max-conns", 100, "Max WebSocket connections")
+	wsOrigins := flag.String("ws-origins", "", "Comma-separated allowed WebSocket Origin patterns (empty = allow all, devnet only)")
 	p2pEnabled := flag.Bool("p2p", false, "Enable P2P networking")
 	p2pListen := flag.String("p2p-listen", "/ip4/0.0.0.0/tcp/9000", "P2P listen multiaddr")
 	bootstrapPeers := flag.String("bootstrap-peers", "", "Comma-separated bootstrap peer multiaddrs")
 	metricsEnabled := flag.Bool("metrics", false, "Enable Prometheus metrics endpoint")
 	metricsAddr := flag.String("metrics-addr", ":9090", "Metrics listen address")
+	rpcCORS := flag.String("rpc-cors", "*", "Access-Control-Allow-Origin for the RPC server (empty disables CORS)")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
@@ -123,13 +125,27 @@ func main() {
 	// Initialize executor with event bus
 	executor := chain.NewExecutor(stateDB, eventBus)
 
-	// Initialize consensus
+	// Rebuild state from persisted blocks (the store only persists blocks; state is
+	// in-memory). Uses a bus-less executor so history isn't re-published as events.
+	if err := chain.Replay(bc, chain.NewExecutor(stateDB, nil), stateDB); err != nil {
+		log.Fatalf("Failed to rebuild state from chain data: %v\n"+
+			"The data directory (%s) holds a chain this binary cannot verify "+
+			"(e.g. produced before signature enforcement). For a devnet, wipe it and restart.",
+			err, *dataDir)
+	}
+
+	// Initialize consensus. The canonical Phase 1 proposer is the genesis admin —
+	// nodes whose key doesn't match run as followers and never produce blocks.
 	validatorSet := consensus.NewValidatorSet(stateDB)
-	pov := consensus.NewPoV(validatorSet, proposerAddr)
+	pov := consensus.NewPoV(validatorSet, genesis.AdminAddress)
+
+	// Follower-side block path: full validation + execution + atomic commit.
+	processor := chain.NewBlockProcessor(bc, executor, stateDB, genesis)
 
 	// Initialize block producer with event bus
 	interval := time.Duration(*blockIntervalMs) * time.Millisecond
 	producer := consensus.NewBlockProducer(bc, executor, stateDB, mempool, pov, interval, proposerAddr, privKey, eventBus)
+	producer.SetCommitLock(&processor.CommitMu)
 
 	// Initialize RPC server with optional WebSocket datastream
 	rpcHandlers := rpc.NewHandlers(bc, stateDB, mempool)
@@ -138,11 +154,13 @@ func main() {
 		dsServer := datastream.NewServer(ctx, eventBus, datastream.ServerConfig{
 			MaxConnections:   *wsMaxConns,
 			SubscriberBuffer: 256,
+			AllowedOrigins:   splitAndTrim(*wsOrigins, ","),
 		})
 		rpcServer = rpc.NewServer(rpcHandlers, *rpcAddr, dsServer.Handler())
 	} else {
 		rpcServer = rpc.NewServer(rpcHandlers, *rpcAddr)
 	}
+	rpcServer.SetCORSOrigin(*rpcCORS)
 
 	// Initialize P2P networking (Phase 2)
 	if *p2pEnabled {
@@ -167,14 +185,23 @@ func main() {
 			log.Fatalf("Failed to create P2P host: %v", err)
 		}
 
-		// Register handlers: add received blocks to chain, txs to mempool
+		// Register handlers: received blocks go through full validation + execution;
+		// received txs must authenticate before touching the mempool.
 		p2pHost.OnBlock(func(block *types.Block) {
-			if err := bc.AddBlock(block); err != nil {
+			if err := processor.ProcessBlock(block); err != nil {
 				log.Printf("P2P: rejected block %d: %v", block.Header.Height, err)
 			}
 		})
 		p2pHost.OnTx(func(tx *types.Transaction) {
-			mempool.Add(tx)
+			if len(tx.Payload) > types.MaxTxPayloadBytes {
+				return
+			}
+			if err := pcrypto.VerifyTx(tx); err != nil {
+				return
+			}
+			if err := mempool.Add(tx); err != nil {
+				log.Printf("P2P: tx %s not added: %v", tx.Hash, err)
+			}
 		})
 
 		if err := p2pHost.Start(); err != nil {

@@ -18,14 +18,17 @@ type StateDB struct {
 
 	// Validation tracking
 	usedProofs      map[types.Hash]bool       // anti-replay
-	submittedProofs map[types.Hash]types.Hash  // paylink ID -> first proof hash
-	votes           map[voteKey]bool           // per-validator votes
+	submittedProofs map[types.Hash]types.Hash // paylink ID -> first proof hash
+	votes           map[voteKey]bool          // per-validator votes
+
+	// Slashing evidence anti-replay: canonical offense IDs already punished
+	processedEvidence map[types.Hash]bool
 
 	// Indexes for queries
-	paylinksByCreator  map[types.Address][]types.Hash   // creator -> paylink IDs
-	paylinksByReceiver map[types.Address][]types.Hash   // receiver -> paylink IDs
-	paylinksByStatus   map[types.Status][]types.Hash    // status -> paylink IDs
-	paylinksByOwner    map[types.Address][]types.Hash   // owner -> paylink IDs
+	paylinksByCreator  map[types.Address][]types.Hash // creator -> paylink IDs
+	paylinksByReceiver map[types.Address][]types.Hash // receiver -> paylink IDs
+	paylinksByStatus   map[types.Status][]types.Hash  // status -> paylink IDs
+	paylinksByOwner    map[types.Address][]types.Hash // owner -> paylink IDs
 
 	// NFT-style operator approvals (owner+operator -> approved)
 	operatorApprovals map[operatorKey]bool
@@ -40,16 +43,16 @@ type StateDB struct {
 	totalSupply         uint64
 	maxSupply           uint64
 	minimumStake        uint64
-	withdrawalCooldown  int64  // seconds
+	withdrawalCooldown  int64 // seconds
 	requiredValidations uint64
 	adminAddress        types.Address
 
 	// Phase 2: Fee and treasury parameters
 	treasuryAddress      types.Address
-	feeRateBasisPoints   uint64  // 50 = 0.5%
-	validatorRewardShare uint64  // 70%
-	treasuryShare        uint64  // 20%
-	burnShare            uint64  // 10%
+	feeRateBasisPoints   uint64 // 50 = 0.5%
+	validatorRewardShare uint64 // 70%
+	treasuryShare        uint64 // 20%
+	burnShare            uint64 // 10%
 	targetCommitteeSize  int
 	quorumFraction       float64
 	totalBurned          uint64
@@ -75,6 +78,7 @@ type snapshot struct {
 	usedProofs         map[types.Hash]bool
 	submittedProofs    map[types.Hash]types.Hash
 	votes              map[voteKey]bool
+	processedEvidence  map[types.Hash]bool
 	paylinksByCreator  map[types.Address][]types.Hash
 	paylinksByReceiver map[types.Address][]types.Hash
 	paylinksByStatus   map[types.Status][]types.Hash
@@ -95,6 +99,7 @@ func NewStateDB(genesis *types.GenesisConfig) *StateDB {
 		usedProofs:         make(map[types.Hash]bool),
 		submittedProofs:    make(map[types.Hash]types.Hash),
 		votes:              make(map[voteKey]bool),
+		processedEvidence:  make(map[types.Hash]bool),
 		paylinksByCreator:  make(map[types.Address][]types.Hash),
 		paylinksByReceiver: make(map[types.Address][]types.Hash),
 		paylinksByStatus:   make(map[types.Status][]types.Hash),
@@ -163,6 +168,7 @@ func (s *StateDB) Snapshot() int {
 		usedProofs:         s.cloneUsedProofs(),
 		submittedProofs:    s.cloneSubmittedProofs(),
 		votes:              s.cloneVotes(),
+		processedEvidence:  s.cloneProcessedEvidence(),
 		paylinksByCreator:  s.cloneHashSliceMap(s.paylinksByCreator),
 		paylinksByReceiver: s.cloneHashSliceMap(s.paylinksByReceiver),
 		paylinksByStatus:   s.cloneStatusIndex(),
@@ -193,6 +199,7 @@ func (s *StateDB) Revert(snapID int) error {
 	s.usedProofs = snap.usedProofs
 	s.submittedProofs = snap.submittedProofs
 	s.votes = snap.votes
+	s.processedEvidence = snap.processedEvidence
 	s.paylinksByCreator = snap.paylinksByCreator
 	s.paylinksByReceiver = snap.paylinksByReceiver
 	s.paylinksByStatus = snap.paylinksByStatus
@@ -213,6 +220,18 @@ func (s *StateDB) DiscardSnapshots() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.snapshots = s.snapshots[:0]
+}
+
+// DiscardSnapshot drops snapshot snapID and any taken after it WITHOUT restoring state,
+// committing the changes made since. Outer snapshots (ids < snapID) survive, so callers
+// can nest a per-tx snapshot inside a per-block one.
+func (s *StateDB) DiscardSnapshot(snapID int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if snapID < 0 || snapID >= len(s.snapshots) {
+		return
+	}
+	s.snapshots = s.snapshots[:snapID]
 }
 
 // AdminAddress returns the admin address.
@@ -309,6 +328,14 @@ func (s *StateDB) cloneSubmittedProofs() map[types.Hash]types.Hash {
 func (s *StateDB) cloneVotes() map[voteKey]bool {
 	c := make(map[voteKey]bool, len(s.votes))
 	for k, v := range s.votes {
+		c[k] = v
+	}
+	return c
+}
+
+func (s *StateDB) cloneProcessedEvidence() map[types.Hash]bool {
+	c := make(map[types.Hash]bool, len(s.processedEvidence))
+	for k, v := range s.processedEvidence {
 		c[k] = v
 	}
 	return c
@@ -416,6 +443,20 @@ func (s *StateDB) TotalBurned() uint64 {
 	return s.totalBurned
 }
 
+// IsEvidenceProcessed reports whether a slashing offense has already been punished.
+func (s *StateDB) IsEvidenceProcessed(id types.Hash) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.processedEvidence[id]
+}
+
+// MarkEvidenceProcessed records a slashing offense as punished (anti-replay).
+func (s *StateDB) MarkEvidenceProcessed(id types.Hash) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.processedEvidence[id] = true
+}
+
 // MintTokens creates new tokens and credits them to the given address.
 func (s *StateDB) MintTokens(to types.Address, amount uint64) error {
 	s.mu.Lock()
@@ -435,12 +476,12 @@ func (s *StateDB) MintTokens(to types.Address, amount uint64) error {
 	return nil
 }
 
-// BurnTokens destroys tokens from total supply.
-func (s *StateDB) BurnTokens(amount uint64) {
+// RecordBurn tracks the burn share of a settlement fee. In the inflation fee model
+// the burn share is simply NEVER MINTED (mint 70% + 20%, withhold 10%), so total
+// supply must NOT be decremented here — doing so would make totalSupply undercount
+// the sum of balances and stakes. totalBurned is the cumulative withheld amount.
+func (s *StateDB) RecordBurn(amount uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.totalBurned += amount
-	if s.totalSupply >= amount {
-		s.totalSupply -= amount
-	}
 }

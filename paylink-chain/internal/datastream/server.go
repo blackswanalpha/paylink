@@ -14,6 +14,10 @@ import (
 type ServerConfig struct {
 	MaxConnections   int
 	SubscriberBuffer int
+	// AllowedOrigins is the list of acceptable Origin host patterns (see
+	// websocket.AcceptOptions.OriginPatterns). Empty means SKIP the origin check —
+	// acceptable for a devnet, not for production.
+	AllowedOrigins []string
 }
 
 // DefaultServerConfig returns sensible defaults.
@@ -44,21 +48,27 @@ func NewServer(ctx context.Context, bus *events.Bus, config ServerConfig) *Serve
 // Handler returns an http.HandlerFunc that upgrades connections to WebSocket.
 func (s *Server) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if int(atomic.LoadInt64(&s.activeConns)) >= s.config.MaxConnections {
+		// Reserve the slot atomically BEFORE accepting: check-then-increment would
+		// let concurrent upgrades blow past MaxConnections.
+		if atomic.AddInt64(&s.activeConns, 1) > int64(s.config.MaxConnections) {
+			atomic.AddInt64(&s.activeConns, -1)
 			http.Error(w, "too many connections", http.StatusServiceUnavailable)
 			return
 		}
+		defer atomic.AddInt64(&s.activeConns, -1)
 
-		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-			InsecureSkipVerify: true, // Allow all origins for development
-		})
+		opts := &websocket.AcceptOptions{}
+		if len(s.config.AllowedOrigins) > 0 {
+			opts.OriginPatterns = s.config.AllowedOrigins
+		} else {
+			opts.InsecureSkipVerify = true // devnet default: no origin check
+		}
+
+		conn, err := websocket.Accept(w, r, opts)
 		if err != nil {
 			log.Printf("WS accept error: %v", err)
 			return
 		}
-
-		atomic.AddInt64(&s.activeConns, 1)
-		defer atomic.AddInt64(&s.activeConns, -1)
 
 		c := NewConn(s.ctx, conn, s.bus, s.config.SubscriberBuffer)
 		c.Run()

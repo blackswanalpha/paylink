@@ -9,7 +9,8 @@ import (
 )
 
 // ComputeStateRoot computes a deterministic state root from all state.
-// StateRoot = SHA256(accountTreeRoot || paylinkTreeRoot || validatorTreeRoot || proofTreeRoot)
+// StateRoot = SHA256(accountTreeRoot || paylinkTreeRoot || validatorTreeRoot ||
+// proofTreeRoot || operatorTreeRoot || evidenceTreeRoot)
 func (s *StateDB) ComputeStateRoot() types.Hash {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -19,8 +20,9 @@ func (s *StateDB) ComputeStateRoot() types.Hash {
 	validatorRoot := computeValidatorRoot(s.validators)
 	proofRoot := computeProofRoot(s.usedProofs)
 	operatorRoot := computeOperatorApprovalRoot(s.operatorApprovals)
+	evidenceRoot := computeProofRoot(s.processedEvidence)
 
-	return crypto.CombineHashes(accountRoot, paylinkRoot, validatorRoot, proofRoot, operatorRoot)
+	return crypto.CombineHashes(accountRoot, paylinkRoot, validatorRoot, proofRoot, operatorRoot, evidenceRoot)
 }
 
 // computeAccountRoot computes a sorted Merkle root of all accounts.

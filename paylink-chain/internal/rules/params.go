@@ -24,7 +24,7 @@ type AmountThresholdParams struct {
 // AddressWhitelistParams restricts which addresses can trigger actions.
 type AddressWhitelistParams struct {
 	Addresses []types.Address `json:"addresses"` // allowed addresses
-	Actions   []ActionKind    `json:"actions"`    // which actions are restricted
+	Actions   []ActionKind    `json:"actions"`   // which actions are restricted
 }
 
 // ReceiverWhitelistParams restricts transfer destinations.

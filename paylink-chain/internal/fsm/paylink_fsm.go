@@ -11,9 +11,9 @@ const (
 
 // PayLink transition kinds.
 const (
-	PayLinkCreate TransitionKind = "Create"
-	PayLinkVote   TransitionKind = "Vote"   // SubmitValidation (no status change, tracked as event only)
-	PayLinkSettle TransitionKind = "Settle" // SubmitValidation reaching quorum
+	PayLinkCreate   TransitionKind = "Create"
+	PayLinkVote     TransitionKind = "Vote"   // SubmitValidation (no status change, tracked as event only)
+	PayLinkSettle   TransitionKind = "Settle" // SubmitValidation reaching quorum
 	PayLinkCancel   TransitionKind = "Cancel"
 	PayLinkFail     TransitionKind = "Fail"
 	PayLinkTransfer TransitionKind = "Transfer"

@@ -47,3 +47,9 @@ and structured JSON logging with correlation ids — so the end-to-end flow is d
 ## Verification
 [verification.md](../verification.md) → "Full stack": trigger a flow, follow one trace across
 services in Tempo/Jaeger, confirm metrics in Prometheus.
+
+## Notes / log
+- 2026-06-12 — audit found a scrape gap: invoice-subscription (8096) and fee-pricing-service (8097)
+  landed after work18 with telemetry wired but were missing from `monitoring/prometheus/prometheus.yml`,
+  so their metrics were silently dropped. Targets added (plus escrow-manager:8098 with work20). Suites
+  fresh-green: telemetry-go 97.4%, telemetry-python 98.1%.
