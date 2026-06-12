@@ -17,4 +17,4 @@
 | 7 | Verify KYC + a blocking decision on the stack | `/verify` |
 
 ## Done
-- [ ] [work12](../work/work12.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).
+- [x] [work12](../work/work12.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).

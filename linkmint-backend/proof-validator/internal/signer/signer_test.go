@@ -39,24 +39,11 @@ func TestServiceKeySigner_SignTxVerifies(t *testing.T) {
 	}
 }
 
-func TestUnsignedSigner_EmptySigButCorrectAddress(t *testing.T) {
-	s, _, err := signer.Build("unsigned", devKey)
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	key, _ := lvm.PrivateKeyFromHex(devKey)
-	if s.Address() != lvm.PrivateKeyToAddress(key) {
-		t.Fatal("unsigned signer must still expose the correct From address")
-	}
-	tx, _ := lvm.BuildSubmitValidationTx(s.Address(), 0, lvm.SHA256Hash([]byte("pl")), lvm.SHA256Hash([]byte("ph")))
-	if err := s.SignTx(tx); err != nil {
-		t.Fatalf("SignTx: %v", err)
-	}
-	if len(tx.Signature) != 0 {
-		t.Fatalf("unsigned signer must leave an empty signature, got %d bytes", len(tx.Signature))
-	}
-	if tx.Hash != lvm.SHA256Hash(tx.SignableBytes()) {
-		t.Fatal("unsigned signer must still set the correct From-derived hash")
+func TestBuild_UnsignedModeRejected(t *testing.T) {
+	// "unsigned" died with ADR-015: the chain verifies every tx signature, so the mode would
+	// produce settlements the chain rejects. Build must refuse it outright.
+	if _, _, err := signer.Build("unsigned", devKey); err == nil {
+		t.Fatal("expected error: unsigned mode is unsupported now that the chain enforces tx signatures")
 	}
 }
 

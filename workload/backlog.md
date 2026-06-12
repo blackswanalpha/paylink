@@ -491,9 +491,10 @@ never expands the active item ([scope.md](scope.md)).
   callback (200) / bad-HMAC (401) → status tier 2 → the same user/amount that blocked at tier 0 now
   **allows** at tier 2; logs carry no secrets/PII. Wired into `docker-compose.yml` (`:8093`, default
   profile, shared `compliance` schema + the pinned dev RSA public key; paylink gets `PAYLINK_COMPLIANCE_*`
-  + `depends_on`) + CI (`compliance-risk` job). Spec is **§2.6**. Deferred (follow-ups, not blocking):
-  gateway (Kong) must inject `X-User-Id` from the JWT `sub` so the gate is live through the front door
-  (today the gate exercises only on a direct call with the header; through Kong it no-ops); real
+  + `depends_on`) + CI (`compliance-risk` job). Spec is **§2.6**. **2026-06-12:** the Kong gateway now
+  injects `X-User-Id` from the verified JWT `sub` on the authenticated routes (anti-spoofed, JWT-only —
+  API-key partners carry no user identity), so the Flow E gate is live through the front door. Deferred
+  (follow-ups, not blocking): real
   Kafka/SQS transport draining the outbox (work15/16); real KYC vendor + per-vendor callback parsing;
   callback body-size cap at ingress; live JWKS fetch replacing static-key pinning; cross-currency/minor-
   unit normalization (paylink PLN minor-units ↔ compliance KES); Phase-2 sanctions/KYB/ML

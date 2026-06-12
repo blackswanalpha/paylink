@@ -182,9 +182,9 @@ services:
       PAYLINK_SIGNER_MODE: service_key
       PAYLINK_LOG_LEVEL: INFO
       # work12 (Flow E): gate above-threshold creates on compliance-risk. The internal token matches
-      # compliance-risk's COMPLIANCE_INTERNAL_SHARED_SECRET (dev-only fixture). The gate also needs an
-      # X-User-Id (JWT `sub`) header — the Kong gateway injecting it is a documented follow-up, so
-      # through the front door the gate currently no-ops; a direct call with X-User-Id exercises it.
+      # compliance-risk's COMPLIANCE_INTERNAL_SHARED_SECRET (dev-only fixture). The gate keys on the
+      # X-User-Id (JWT `sub`) header, which the Kong gateway injects for JWT callers (anti-spoofed);
+      # API-key partners carry no user identity, so their creates skip the gate by design.
       PAYLINK_COMPLIANCE_CHECK_ENABLED: "true"
       PAYLINK_COMPLIANCE_SERVICE_URL: http://compliance-risk:8093
       PAYLINK_COMPLIANCE_INTERNAL_TOKEN: devnet-internal-token

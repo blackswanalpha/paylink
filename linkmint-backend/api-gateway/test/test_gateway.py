@@ -14,7 +14,10 @@ import time
 from typing import Any
 
 import httpx
+import jwt as pyjwt
 import pytest
+
+JWT_ISSUER = os.environ.get("GATEWAY_JWT_ISSUER", "linkmint-dev")
 
 
 def auth(token: str) -> dict[str, str]:
@@ -140,6 +143,55 @@ def test_credentials_not_forwarded_upstream(client: httpx.Client, valid_token: s
     assert "x-api-key" not in headers
 
 
+# ── X-User-Id injection (work12 Flow E: paylink-service compliance gate keys on it) ──────────
+def test_user_id_injected_from_jwt_sub(client: httpx.Client, valid_token: str) -> None:
+    r = client.get("/v1/paylinks", headers=auth(valid_token))
+    assert r.status_code == 200
+    assert r.json()["headers"].get("x-user-id") == "user-1"  # conftest mints sub=user-1
+
+
+def test_client_supplied_user_id_is_stripped(client: httpx.Client, valid_token: str) -> None:
+    r = client.get("/v1/paylinks", headers={**auth(valid_token), "X-User-Id": "evil-user"})
+    assert r.status_code == 200
+    # the gateway-authoritative value (JWT sub) wins; the spoofed one never reaches upstream
+    assert r.json()["headers"].get("x-user-id") == "user-1"
+
+
+def test_api_key_caller_gets_no_user_id(client: httpx.Client, partner_key: str) -> None:
+    # An API-key partner has no user identity; a spoofed header must not survive either.
+    r = client.get(
+        "/v1/paylinks", headers={"X-API-Key": partner_key, "X-User-Id": "evil-user"}
+    )
+    assert r.status_code == 200, r.text
+    assert "x-user-id" not in r.json()["headers"]
+
+
+def test_api_key_with_forged_bearer_cannot_inject_identity(
+    client: httpx.Client, partner_key: str, partner_addr: str
+) -> None:
+    # Auth is OR-composed: key-auth authenticates the partner even though the Bearer is forged
+    # (wrong signing secret). The gateway must not trust claims from the unverified token —
+    # identity resolves from the key's consumer (custom_id) and no X-User-Id is injected.
+    forged = pyjwt.encode(
+        {
+            "iss": JWT_ISSUER,
+            "sub": "evil-user",
+            "creator_addr": "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            "exp": int(time.time()) + 3600,
+        },
+        "not-the-gateway-secret",
+        algorithm="HS256",
+    )
+    r = client.get(
+        "/v1/paylinks",
+        headers={"X-API-Key": partner_key, "Authorization": f"Bearer {forged}"},
+    )
+    assert r.status_code == 200, r.text
+    headers = r.json()["headers"]
+    assert headers.get("x-creator-addr") == partner_addr.lower()
+    assert "x-user-id" not in headers
+
+
 # ── work08 pass-through routes (identity/merchant/compliance/admin/audit) ────────────────────
 # These upstreams self-verify the identity-issued RS256 token, so the gateway must forward the
 # Authorization header (NOT strip it like the paylink path) and must NOT inject its own X-Creator-Addr.
@@ -164,13 +216,20 @@ def test_passthrough_strips_spoofed_creator_addr(client: httpx.Client, valid_tok
     spoof = "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
     r = client.get(
         "/v1/users/me",
-        headers={**auth(valid_token), "X-Creator-Addr": spoof, "X-Partner-Id": "evil"},
+        headers={
+            **auth(valid_token),
+            "X-Creator-Addr": spoof,
+            "X-Partner-Id": "evil",
+            "X-User-Id": "evil-user",
+        },
     )
     assert r.status_code == 200
     headers = r.json()["headers"]
     # Anti-spoofing is global: a client-supplied identity header never reaches any upstream.
+    # Pass-through routes get no gateway-injected identity at all (they self-verify the token).
     assert "x-creator-addr" not in headers
     assert "x-partner-id" not in headers
+    assert "x-user-id" not in headers
 
 
 def test_passthrough_does_not_require_a_credential(client: httpx.Client) -> None:

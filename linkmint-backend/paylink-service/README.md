@@ -49,10 +49,12 @@ automatically when Docker is unavailable.
 ## Chain signing (seam)
 
 The chain uses **NIST P-256** ECDSA; tx hash = `SHA256(SignableBytes)`; signature = raw `r||s`
-(64 bytes, base64 on the wire); address = last 20 bytes of **legacy Keccak-256** of the
-uncompressed pubkey. The chain does **not yet verify** tx signatures (ADR-005) — we sign correctly
-for forward-compat, and `PAYLINK_SIGNER_MODE=unsigned` is a fallback. The signer is a swappable
-seam (`app/chain/signer.py`) so a future client-signed flow (SDK/work05) can replace it.
+(64 bytes, base64 on the wire); the tx carries `pubKey` (uncompressed, base64); address = last 20
+bytes of **legacy Keccak-256** of the uncompressed pubkey. The chain **verifies every tx signature**
+(ADR-015, superseding ADR-005), so `PAYLINK_SIGNER_MODE=unsigned` only boots when
+`PAYLINK_CHAIN_SUBMIT_ENABLED=false` (no-key, no-chain deployments) and is refused otherwise. The
+signer is a swappable seam (`app/chain/signer.py`) so a future client-signed flow (SDK/work05) can
+replace it.
 
 ## Deferred seams (not built here)
 

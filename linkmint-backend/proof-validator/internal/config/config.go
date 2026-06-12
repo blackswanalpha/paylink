@@ -24,7 +24,7 @@ type Config struct {
 	TrustedPubKeys []string // PROOF_VALIDATOR_TRUSTED_PUBKEYS (comma-separated uncompressed P-256 hex)
 
 	// Settlement signing (the validator's own key).
-	SignerMode     string // PROOF_VALIDATOR_SIGNER_MODE: service_key|unsigned
+	SignerMode     string // PROOF_VALIDATOR_SIGNER_MODE: service_key (unsigned removed — ADR-015)
 	ChainSignerKey string // PROOF_VALIDATOR_CHAIN_SIGNER_KEY (P-256 D scalar hex)
 
 	// On-chain cross-check before broadcasting.
@@ -78,8 +78,10 @@ func Load() (Config, error) {
 	}
 
 	signerMode := strings.ToLower(env("PROOF_VALIDATOR_SIGNER_MODE", "service_key"))
-	if signerMode != "service_key" && signerMode != "unsigned" {
-		return Config{}, fmt.Errorf("config: PROOF_VALIDATOR_SIGNER_MODE must be service_key|unsigned, got %q", signerMode)
+	if signerMode != "service_key" {
+		// "unsigned" was removed with ADR-015: the chain verifies every tx signature, so an
+		// unsigned settlement tx is rejected at admission. Fail fast at startup instead.
+		return Config{}, fmt.Errorf("config: PROOF_VALIDATOR_SIGNER_MODE must be service_key (unsigned removed by ADR-015), got %q", signerMode)
 	}
 
 	return Config{

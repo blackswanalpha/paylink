@@ -1,0 +1,34 @@
+[
+  {
+    "beat": "t1_title",
+    "t": 12.397
+  },
+  {
+    "beat": "t2_problem",
+    "t": 23.086
+  },
+  {
+    "beat": "t3_idea",
+    "t": 36.074
+  },
+  {
+    "beat": "t4_create",
+    "t": 50.529
+  },
+  {
+    "beat": "t5_pay",
+    "t": 61.711
+  },
+  {
+    "beat": "t6_settle",
+    "t": 71.725
+  },
+  {
+    "beat": "t7_traction",
+    "t": 88.06
+  },
+  {
+    "beat": "t8_close",
+    "t": 104.069
+  }
+]

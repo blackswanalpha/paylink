@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 
+import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, utils
 
@@ -92,3 +93,18 @@ def test_unsigned_signer_has_address_but_empty_signature() -> None:
     s = UnsignedSigner.from_hex(D_HEX)
     assert s.address == ADDRESS
     assert s.sign_digest(bytes.fromhex(HASH[2:])) == ""
+
+
+def test_build_signer_rejects_unsigned_with_chain_submit_enabled() -> None:
+    # The chain verifies every tx signature (ADR-015): an unsigned signer + live chain submission
+    # would silently fail every settlement, so the combination must refuse to boot.
+    from app.chain.signer import build_signer
+    from app.config import Settings
+
+    settings = Settings(signer_mode="unsigned", chain_submit_enabled=True)
+    with pytest.raises(ValueError, match="ADR-015"):
+        build_signer(settings)
+
+    # Booting without a key stays possible when the chain flow is off (the documented use).
+    settings = Settings(signer_mode="unsigned", chain_submit_enabled=False)
+    assert build_signer(settings).public_key_b64 == ""

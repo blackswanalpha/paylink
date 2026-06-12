@@ -25,10 +25,10 @@ Append-only, tamper-evident log of every privileged action — the system of rec
 - The Go/chi conventions (mirror work02); SHA256 hashing conventions; event bus (work15) for `audit.intake`.
 
 ## Acceptance criteria
-- [ ] Entries appended with linked hash chain; `/verify` returns ok or the break point.
-- [ ] Query by actor/resource/time; intake via mTLS only.
-- [ ] Tests (chain integrity, tamper detection); ≥80%; lint/build clean.
-- [ ] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] Entries appended with linked hash chain; `/verify` returns ok or the break point.
+- [x] Query by actor/resource/time; intake via mTLS only.
+- [x] Tests (chain integrity, tamper detection); ≥80%; lint/build clean.
+- [x] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service (Go/chi)": append entries, tamper one in a

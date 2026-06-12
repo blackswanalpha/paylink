@@ -60,7 +60,7 @@ func TestLoad_FromEnv(t *testing.T) {
 	t.Setenv("PROOF_VALIDATOR_STAKE_AMOUNT", "12345")
 	t.Setenv("PROOF_VALIDATOR_TRUSTED_PUBKEYS", " a , b ,, c ")
 	t.Setenv("PROOF_VALIDATOR_AUTO_STAKE_POLL_MS", "250")
-	t.Setenv("PROOF_VALIDATOR_SIGNER_MODE", "UNSIGNED")
+	t.Setenv("PROOF_VALIDATOR_SIGNER_MODE", "SERVICE_KEY")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -78,8 +78,8 @@ func TestLoad_FromEnv(t *testing.T) {
 	if cfg.AutoStakePollInterval != 250*time.Millisecond {
 		t.Errorf("poll interval = %v, want 250ms", cfg.AutoStakePollInterval)
 	}
-	if cfg.SignerMode != "unsigned" {
-		t.Errorf("SignerMode = %q, want unsigned (lowercased)", cfg.SignerMode)
+	if cfg.SignerMode != "service_key" {
+		t.Errorf("SignerMode = %q, want service_key (lowercased)", cfg.SignerMode)
 	}
 }
 
@@ -89,6 +89,13 @@ func TestLoad_Errors(t *testing.T) {
 		t.Setenv("PROOF_VALIDATOR_SIGNER_MODE", "magic")
 		if _, err := config.Load(); err == nil {
 			t.Fatal("expected error for invalid signer mode")
+		}
+	})
+	t.Run("unsigned mode removed (ADR-015)", func(t *testing.T) {
+		clearAll(t)
+		t.Setenv("PROOF_VALIDATOR_SIGNER_MODE", "unsigned")
+		if _, err := config.Load(); err == nil {
+			t.Fatal("expected error: unsigned mode was removed when the chain began enforcing tx signatures")
 		}
 	})
 	t.Run("bad bool", func(t *testing.T) {
