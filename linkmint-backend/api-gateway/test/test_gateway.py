@@ -77,6 +77,32 @@ def test_escrows_creator_addr_injected_and_spoof_stripped(
     assert spoof not in (headers.get("x-creator-addr") or "")
 
 
+# work23 — settlements/payouts are authenticated + identity-injected exactly like paylinks/payments.
+def test_jwt_routes_to_settlement_service(client: httpx.Client, valid_token: str) -> None:
+    r = client.get("/v1/settlements", headers=auth(valid_token))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["service"] == "payments"  # the payments echo observes the settlement upstream
+    assert body["path"] == "/v1/settlements"
+
+
+def test_settlements_missing_credentials_401_envelope(client: httpx.Client) -> None:
+    r = client.get("/v1/payouts")
+    assert r.status_code == 401
+    assert_envelope(r.json(), "UNAUTHORIZED")
+
+
+def test_settlements_creator_addr_injected_and_spoof_stripped(
+    client: httpx.Client, valid_token: str
+) -> None:
+    spoof = "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    r = client.get("/v1/settlements", headers={**auth(valid_token), "X-Creator-Addr": spoof})
+    assert r.status_code == 200
+    headers = r.json()["headers"]
+    assert headers.get("x-creator-addr") == "0xaaaaaa0000000000000000000000000000000001"
+    assert spoof not in (headers.get("x-creator-addr") or "")
+
+
 def test_unknown_route_404_envelope(client: httpx.Client) -> None:
     r = client.get("/nope")  # no auth needed; unknown path → 404
     assert r.status_code == 404
@@ -272,6 +298,32 @@ def test_fee_pricing_internal_surface_not_exposed(client: httpx.Client, valid_to
     r = client.post("/v1/internal/accruals", headers=auth(valid_token), json={"x": 1})
     assert r.status_code == 404
     assert_envelope(r.json(), "NOT_FOUND")
+
+
+# ── work22 refund-dispute pass-through (RS256 self-verify; /v1/refunds + /v1/disputes) ────────────
+def test_refunds_passthrough_routes(client: httpx.Client, valid_token: str) -> None:
+    r = client.get("/v1/refunds", headers=auth(valid_token))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["path"] == "/v1/refunds"
+    # Pass-through: the bearer token reaches the service (it self-verifies); none is stripped.
+    assert body["headers"].get("authorization") == f"Bearer {valid_token}"
+    # The gateway injects no X-Creator-Addr on a pass-through route.
+    assert "x-creator-addr" not in body["headers"]
+
+
+def test_disputes_routed(client: httpx.Client, valid_token: str) -> None:
+    r = client.get("/v1/disputes/some-id", headers=auth(valid_token))
+    assert r.status_code == 200, r.text
+    assert r.json()["path"] == "/v1/disputes/some-id"
+
+
+def test_dispute_webhook_passthrough_no_credential(client: httpx.Client) -> None:
+    # The HMAC webhook carries no JWT — the gateway must NOT gate it (the service verifies the
+    # X-Signature). It reaches the upstream without a credential.
+    r = client.post("/v1/disputes/webhooks/stub", json={"kind": "dispute.opened"})
+    assert r.status_code == 200, r.text
+    assert r.json()["path"] == "/v1/disputes/webhooks/stub"
 
 
 # ── Correlation id ──────────────────────────────────────────────────────────────────────────

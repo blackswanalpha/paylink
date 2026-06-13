@@ -29,7 +29,7 @@ services:
 
   # work15 — Kafka-compatible event bus (Redpanda; ADR-011). Single node, KRaft (no ZooKeeper).
   # Two listeners: internal `redpanda:9092` for compose services, external `localhost:19092` for
-  # host tools (rpk / the eventbus-python integration test). Topics are the 10 domain topics, created
+  # host tools (rpk / the eventbus-python integration test). Topics are the 15 domain topics, created
   # by the one-shot `redpanda-init` below so producers/consumers never race auto-creation.
   redpanda:
     image: redpandadata/redpanda:v24.2.7
@@ -52,7 +52,7 @@ services:
       retries: 30
       start_period: 10s
 
-  # One-shot: create the 10 domain topics (idempotent). Consumers/producers depend on this completing
+  # One-shot: create the 15 domain topics (idempotent). Consumers/producers depend on this completing
   # so the topics exist deterministically (1 partition / 1 replica locally).
   redpanda-init:
     image: redpandadata/redpanda:v24.2.7
@@ -62,7 +62,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        for t in paylink payment chain merchant compliance identity notification escrow settlement fee pricing fx invoice; do
+        for t in paylink payment chain merchant compliance identity notification escrow settlement fee pricing fx invoice refund dispute; do
           rpk topic create "$$t" --brokers redpanda:9092 -p 1 -r 1 || true
         done
         echo "redpanda topics ready"
@@ -744,6 +744,81 @@ services:
       retries: 10
       start_period: 25s
 
+  # work22 — refund-dispute-service (Python/FastAPI). Refunds (REQUESTED→PROCESSING→COMPLETED, full +
+  # partial) and rail-initiated disputes/chargebacks (HMAC webhook intake → evidence window → submit
+  # → WON/LOST/EXPIRED). Strictly non-custodial (A.1): the rail reversal is instruction-only (no rail
+  # adapter supports reversal yet) and a lost/expired dispute publishes refund.clawback.requested for
+  # settlement (work23) to consume — never moves funds. Owns the `refund` schema. Consumes
+  # chain.paylink.verified (the original-amount projection, A.3); publishes refund.* / dispute.* via
+  # the outbox relay. A sweeper expires overdue disputes and (dev) simulates refund completion.
+  refund-dispute-service:
+    build:
+      context: .
+      dockerfile: linkmint-backend/refund-dispute-service/Dockerfile
+    environment:
+      REFUND_DATABASE_URL: postgresql+psycopg://paylink:paylink@postgres:5432/paylink
+      REFUND_REDIS_URL: redis://redis:6379/0
+      REFUND_JWT_ISSUER: linkmint-identity
+      REFUND_JWT_AUDIENCE: linkmint
+      REFUND_LOG_LEVEL: INFO
+      # work15 — publish refund.*/dispute.* via the outbox relay; consume chain.paylink.verified to
+      # project verified_paylinks (the original-amount source of truth, A.3).
+      REFUND_EVENT_PUBLISHER_MODE: kafka
+      REFUND_EVENT_CONSUMER_ENABLED: "true"
+      KAFKA_BROKERS: redpanda:9092
+      # Upstream lookups: refund eligibility (orchestrator) + original-amount fallback (paylink-svc).
+      REFUND_PAYMENT_ORCHESTRATOR_URL: http://payment-orchestrator:8080
+      REFUND_PAYLINK_SERVICE_URL: http://paylink-service:8000
+      # Dev runs lenient (the verified_paylinks projection only fills under --profile e2e); prod runs
+      # strict. Merchant approval is the authorization gate when the original amount is unresolvable.
+      REFUND_AMOUNT_VALIDATION: lenient
+      # Rail reversal is instruction-only; the sweeper simulates PROCESSING→COMPLETED in dev.
+      REFUND_REVERSAL_SIMULATE: "true"
+      REFUND_SWEEP_ENABLED: "true"
+      REFUND_SWEEP_INTERVAL_SECONDS: "30"
+      # Per-provider dispute-webhook HMAC secrets ("<provider>:secret;...").
+      REFUND_WEBHOOK_SECRETS: "stub:devnet-dispute-secret"
+      # Clawback is a published contract for settlement (work23); A.6 ledger posting OFF (work23 writes).
+      REFUND_CLAWBACK_MODE: event
+      REFUND_LEDGER_POSTING_ENABLED: "false"
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: refund-dispute-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # Dev-only public key matching identity-service's pinned private key (see identity note above).
+      REFUND_JWT_PUBLIC_KEY_PEM: |-
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4ICsoMfDlpFGxfKDkwaO
+        CSicE31hGuzVJ5xSxfB1Ybl2yBg5pVMsOZ/Wg5xrW0Hiwi3Us7GWJowpLSCxizw7
+        dgmkrSmKbVU9z/q2nnJcb0gAWCKreBQ0AWS1K3onUXV2ACkp2fmRktpdTU9ZEkCm
+        dXcegWENBM4saL+UhFOHu0/U85ImhlqRxw+ccXwuq9V0GowWYjVGgUB0FOwd2wKY
+        XdgdirHZQ4w7MwJ4zyF3P/8g3+9mcuWRcLc3Onx7g2h7IcUp0rw9phOx/8bsGodw
+        FWx3y3ulTGriFc796lQb/7t8PZpYONULjPw6tABKVBC29hm4uh1M2Ab36UFrjZyV
+        DQIDAQAB
+        -----END PUBLIC KEY-----
+    ports:
+      - "8100:8100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+      payment-orchestrator:
+        condition: service_started
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8100/internal/readyz').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
   # work20 — escrow-manager (Go/chi). Conditional PayLink release/refund: holds the release
   # DECISION until a condition is met (delivery confirmation, time-lock, N-of-M approval), then
   # publishes an escrow.released/escrow.refunded INSTRUCTION — strictly non-custodial (A.1), no
@@ -786,6 +861,62 @@ services:
       test:
         - "CMD-SHELL"
         - "wget -qO- http://localhost:8098/internal/healthz || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # work23 — settlement-service (Go/chi). Off-chain settlement lifecycle: aggregates verified
+  # PayLinks into per-merchant settlements (gross/fee/net), schedules T+1 payouts, and ingests rail
+  # settlement files. Strictly non-custodial (A.1): a payout is an INSTRUCTION over the merchant's
+  # rail, never a fund movement. Owns the `settlement` schema and runs the shared `ledger` migrations
+  # (work16) — every flow is a balanced double-entry posting (A.6). Consumes chain.paylink.verified
+  # + chain.fee.collected (gross + chain fee, A.5), merchant.* (routing projections), and
+  # refund.clawback.requested (negative offsets); publishes settlement.*/payout.*. DbDedupe on
+  # settlement.processed_events makes redeliveries exactly-once (work17). The payout scheduler closes
+  # due settlements and instructs payouts; the rail-file ingest endpoint (:8101/settlements/files/
+  # ingest) is internal/trusted-network only (NOT routed through the gateway).
+  settlement-service:
+    build:
+      context: .
+      dockerfile: linkmint-backend/settlement-service/Dockerfile
+    environment:
+      SETTLEMENT_HTTP_ADDR: ":8101"
+      SETTLEMENT_DATABASE_URL: postgres://paylink:paylink@postgres:5432/paylink?sslmode=disable
+      SETTLEMENT_REDIS_URL: redis://redis:6379/0
+      SETTLEMENT_LOG_LEVEL: INFO
+      # work15 — publish settlement.*/payout.* to the bus; consume chain/merchant/refund topics.
+      SETTLEMENT_EVENT_PUBLISHER_MODE: kafka
+      SETTLEMENT_EVENT_CONSUMER_ENABLED: "true"
+      KAFKA_BROKERS: redpanda:9092
+      # Payout scheduler: close due settlements (T+1 cutoff) and instruct payouts.
+      SETTLEMENT_SCHEDULE_ENABLED: "true"
+      SETTLEMENT_SCHEDULE_INTERVAL_SECONDS: "30"
+      SETTLEMENT_CURRENCY: KES
+      SETTLEMENT_DEFAULT_TZ: Africa/Nairobi
+      SETTLEMENT_DEFAULT_RAIL: mpesa
+      SETTLEMENT_MIN_PAYOUT: "KES:10000"
+      SETTLEMENT_PLATFORM_FEE_BPS: "0"
+      # Internal rail-file ingest token (trusted-network only; mTLS terminates upstream).
+      SETTLEMENT_INGEST_TOKEN: ${SETTLEMENT_INGEST_TOKEN:-devnet-settlement-ingest}
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: settlement-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    ports:
+      - "8101:8101"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "wget -qO- http://localhost:8101/internal/healthz || exit 1"
       interval: 10s
       timeout: 5s
       retries: 10
@@ -859,8 +990,13 @@ services:
       GATEWAY_AUDIT_SERVICE_URL: http://audit-log-service:8094
       # work21 — additive pass-through upstream (fee-pricing; RS256 self-verify, no X-Creator-Addr).
       GATEWAY_FEE_PRICING_SERVICE_URL: http://fee-pricing-service:8097
+      # work22 — additive pass-through upstream (refund-dispute; RS256 self-verify + HMAC webhook).
+      GATEWAY_REFUND_DISPUTE_SERVICE_URL: http://refund-dispute-service:8100
       # work20 — escrow-manager (auth required; X-Creator-Addr injected like paylinks/payments).
       GATEWAY_ESCROW_SERVICE_URL: http://escrow-manager:8098
+      # work23 — settlement-service (auth required; X-Creator-Addr injected = merchant settlement key).
+      # The /settlements/files/ingest endpoint is internal-only and intentionally NOT routed here.
+      GATEWAY_SETTLEMENT_SERVICE_URL: http://settlement-service:8101
       GATEWAY_REDIS_HOST: redis
       GATEWAY_REDIS_PORT: "6379"
       GATEWAY_JWT_ISSUER: linkmint-dev
@@ -905,7 +1041,11 @@ services:
         condition: service_healthy
       fee-pricing-service:
         condition: service_healthy
+      refund-dispute-service:
+        condition: service_healthy
       escrow-manager:
+        condition: service_healthy
+      settlement-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "kong", "health"]

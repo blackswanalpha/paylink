@@ -15,8 +15,12 @@ export GATEWAY_ADMIN_SERVICE_URL ?= http://admin-backoffice:8092
 export GATEWAY_AUDIT_SERVICE_URL ?= http://audit-log-service:8094
 # work21 — additive pass-through upstream (fee-pricing).
 export GATEWAY_FEE_PRICING_SERVICE_URL ?= http://fee-pricing-service:8097
+# work22 — additive pass-through upstream (refund-dispute).
+export GATEWAY_REFUND_DISPUTE_SERVICE_URL ?= http://refund-dispute-service:8100
 # work20 — escrow-manager (authenticated like paylinks/payments).
 export GATEWAY_ESCROW_SERVICE_URL ?= http://escrow-manager:8098
+# work23 — settlement-service (authenticated like paylinks/payments; X-Creator-Addr injected).
+export GATEWAY_SETTLEMENT_SERVICE_URL ?= http://settlement-service:8101
 export GATEWAY_JWT_ISSUER ?= linkmint-dev
 export GATEWAY_JWT_DEV_SECRET ?= devsecret-change-me
 export GATEWAY_JWT_CREATOR_ADDR_CLAIM ?= creator_addr
@@ -34,7 +38,9 @@ VARS := $$GATEWAY_PAYLINK_SERVICE_URL $$GATEWAY_PAYMENT_ORCHESTRATOR_URL \
   $$GATEWAY_NOTIFICATION_SERVICE_URL \
   $$GATEWAY_IDENTITY_SERVICE_URL $$GATEWAY_MERCHANT_SERVICE_URL $$GATEWAY_COMPLIANCE_SERVICE_URL \
   $$GATEWAY_ADMIN_SERVICE_URL $$GATEWAY_AUDIT_SERVICE_URL $$GATEWAY_FEE_PRICING_SERVICE_URL \
+  $$GATEWAY_REFUND_DISPUTE_SERVICE_URL \
   $$GATEWAY_ESCROW_SERVICE_URL \
+  $$GATEWAY_SETTLEMENT_SERVICE_URL \
   $$GATEWAY_JWT_ISSUER \
   $$GATEWAY_JWT_DEV_SECRET $$GATEWAY_JWT_CREATOR_ADDR_CLAIM $$GATEWAY_PARTNER_API_KEY \
   $$GATEWAY_PARTNER_CREATOR_ADDR $$GATEWAY_RATE_LIMIT_PER_MINUTE $$GATEWAY_REDIS_HOST \

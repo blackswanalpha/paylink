@@ -1,8 +1,6 @@
 # work23 — settlement-service (aggregation, payouts, reconciliation files)
 
-> **Seeded** — expand with `/work 23` when picked up.
-
-- **Status:** todo · **Owner:** service-builder · **Stack:** Go/chi · **Depends on:** 02, 10, 16 · **Flow:** [flow23](../flow/flow23.md)
+- **Status:** done · **Owner:** service-builder · **Stack:** Go/chi · **Depends on:** 02, 10, 16 · **Flow:** [flow23](../flow/flow23.md)
 - **Phase:** 2 / Beta · **Spec:** backendfeatures.md §2.12
 
 ## Goal
@@ -27,10 +25,21 @@ T+1 payouts, ingest rail settlement files, and produce statements.
 - Go/chi conventions (mirror work02); ledger helper (work16); fee semantics in `internal/fee`; event bus (work15).
 
 ## Acceptance criteria
-- [ ] Verified PayLinks aggregate into a merchant settlement with gross/fee/net (balanced ledger).
-- [ ] T+1 payout scheduled + executed via rail; rail file ingested + matched.
-- [ ] Tests ≥80%; lint/build clean.
-- [ ] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] Verified PayLinks aggregate into a merchant settlement with gross/fee/net (balanced ledger).
+- [x] T+1 payout scheduled + executed via rail; rail file ingested + matched.
+- [x] Tests ≥80%; lint/build clean.
+- [x] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service (Go/chi)" + "Full stack".
+
+## Outcome (done 2026-06-13)
+Built `linkmint-backend/settlement-service/` (Go/chi, port 8101, owns `settlement` schema), mirroring
+the work20 escrow template. Aggregates `chain.paylink.verified` (enriched with payee+amount) +
+`chain.fee.collected` into per-merchant settlements; balanced double-entry ledger postings (A.6) via
+ledger-go on the caller tx; T+1 payout scheduler (cutoff per tz, min-payout per currency);
+internal/mTLS rail-file ingest (JSON/CSV) that matches lines → payouts PAID; consumes `merchant.*`
+(projections) + `refund.clawback.requested` (negative offset, enriched with paylink_id in work22);
+publishes `settlement.*`/`payout.*` (payout.* aliased to the settlement topic). Non-custodial (A.1):
+payouts are instructions only. Wired into docker-compose, Kong (X-Creator-Addr-injected routes), and
+CI; `make cover` 81.3%. See the service `DESIGN.md` for the documented seams.
