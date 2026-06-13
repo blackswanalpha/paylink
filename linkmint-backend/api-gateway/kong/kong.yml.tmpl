@@ -319,6 +319,47 @@ services:
               hide_credentials: true
               run_on_preflight: true
 
+  # ── wallet-service (work24) ──────────────────────────────────────────────────────────────────
+  # Read-side over on-chain PLN. /v1/wallets + /v1/staking are self-scoped: authenticated like
+  # paylinks/payments/escrows (jwt OR key-auth) so the post-function injects the trustworthy
+  # X-Creator-Addr the service authorizes against (a caller reads only their own wallet). The
+  # /staking/intent endpoint returns an UNSIGNED tx (A.1 — no keys). /v1/treasury is PUBLIC: it
+  # carries no auth plugin and is left out of the post-function allow-list (pass-through).
+  - name: wallet-service
+    url: ${GATEWAY_WALLET_SERVICE_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: wallets
+        paths: ["/v1/wallets", "/v1/staking"]
+        strip_path: false
+        preserve_host: false
+        plugins:
+          - name: jwt
+            config:
+              anonymous: 11111111-1111-1111-1111-111111111111
+              key_claim_name: iss
+              claims_to_verify: ["exp"]
+              uri_param_names: []
+              cookie_names: []
+              run_on_preflight: true
+          - name: key-auth
+            config:
+              anonymous: 11111111-1111-1111-1111-111111111111
+              key_names: ["X-API-Key"]
+              key_in_header: true
+              key_in_query: false
+              key_in_body: false
+              hide_credentials: true
+              run_on_preflight: true
+      # Public treasury stats — no auth plugin; pass-through (not in the post-function allow-list).
+      - name: wallet-treasury
+        paths: ["/v1/treasury"]
+        strip_path: false
+        preserve_host: false
+
 consumers:
   # Shared anonymous fallback — selected by the auth plugins when no valid credential is presented.
   - id: 11111111-1111-1111-1111-111111111111
@@ -401,7 +442,7 @@ plugins:
           -- routes (identity/merchant/compliance/admin/audit) self-verify the forwarded bearer token,
           -- so the gateway neither requires a credential nor injects X-Creator-Addr for them; the
           -- catch-all (404) route is likewise skipped.
-          if rn ~= "paylinks" and rn ~= "payments" and rn ~= "notifications" and rn ~= "escrows" and rn ~= "settlements" then
+          if rn ~= "paylinks" and rn ~= "payments" and rn ~= "notifications" and rn ~= "escrows" and rn ~= "settlements" and rn ~= "wallets" then
             return
           end
 

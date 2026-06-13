@@ -28,10 +28,10 @@ and treasury stats — indexing chain events. **Never holds private keys; return
   events (work15) for the indexer; staking/validator logic in `paylink-chain/internal/state`.
 
 ## Acceptance criteria
-- [ ] Balance, tx history, staking positions, rewards, treasury stats served from the indexed read-side.
-- [ ] `/staking/intent` returns an unsigned tx + fee estimate; no keys held.
-- [ ] Indexer stays consistent with chain events; tests ≥80%.
-- [ ] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
+- [x] Balance, tx history, staking positions, rewards, treasury stats served from the indexed read-side.
+- [x] `/staking/intent` returns an unsigned tx + fee estimate; no keys held.
+- [x] Indexer stays consistent with chain events; tests ≥80%.
+- [x] Passes the Backend-service checklist in [definition-of-done.md](../definition-of-done.md).
 
 ## Verification
 [verification.md](../verification.md) → "Backend service (Go/chi)" + "Full stack": stake on-chain,

@@ -44,7 +44,7 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 21 | [work21](work/work21.md) / [flow21](flow/flow21.md) | 2.8 Fee-pricing service | Python/FastAPI | 10 | done |
 | 22 | [work22](work/work22.md) / [flow22](flow/flow22.md) | 2.9 Refund-dispute service | Python/FastAPI | 02,23 | done |
 | 23 | [work23](work/work23.md) / [flow23](flow/flow23.md) | 2.12 Settlement service | Go/chi | 02,10,16 | done |
-| 24 | [work24](work/work24.md) / [flow24](flow/flow24.md) | 2.13 Wallet service | Go/chi | (chain RPC) | todo |
+| 24 | [work24](work/work24.md) / [flow24](flow/flow24.md) | 2.13 Wallet service | Go/chi | (chain RPC) | done |
 | 34 | [work34](work/work34.md) / [flow34](flow/flow34.md) | 2.13 Token send & payment submission (build→sign→broadcast) | Go/chi + TS | 24, 06 | todo |
 | 25 | [work25](work/work25.md) / [flow25](flow/flow25.md) | 2.16 Fraud-detection service | Python/FastAPI | 02,12 | todo |
 | 26 | [work26](work/work26.md) / [flow26](flow/flow26.md) | 2.19 Reporting-analytics | Python/FastAPI + ClickHouse | 15 | todo |
@@ -663,3 +663,20 @@ never expands the active item ([scope.md](scope.md)).
   CI job. ruff/black/mypy clean; 104 unit tests, cover 94% (gate 80); A.6 ledger seam OFF (work23 is
   the canonical writer). Follow-ups: real rail-reversal adapters (work28–30), the settlement-side
   clawback consumer (work23), and escrow-dispute resolution (the escrow-manager DISPUTED seam).
+- 2026-06-13 — **work24 → done.** Built `linkmint-backend/wallet-service` (Go/chi, port 8102,
+  `wallet` schema), the read-side over on-chain PLN (spec §2.13), mirroring the work23 Go/chi shape
+  but simpler: it talks to the lVM JSON-RPC and records **no** money flows, so **no `ledger-go`, no
+  publisher, no scheduler**. Endpoints: `GET /v1/wallets/{addr}(/transactions)`,
+  `GET /v1/staking/positions|rewards`, `POST /v1/staking/intent`, `GET /v1/treasury/stats` (public).
+  **Balance is a read-through RPC cache** (`paylink_getAccount` → `wallet.account_balances`, served
+  `stale` with the chain down) while **tx history / staking / treasury are pure `chain.*` event
+  projections** (transfer/stake/unstake/slash/reward/fee/burn → `wallet` schema via DbDedupe, the
+  first wallet bus indexer). **`/staking/intent` is non-custodial (A.1):** returns an UNSIGNED
+  stake/unstake tx + `tx.SignableBytes()` + fee estimate (0 — stake txs carry no protocol fee), no
+  keys held; the live nonce comes from `paylink_getNonce`. Added the **additive
+  `pkg/lvm.BuildInitiateUnstakeTx`** (re-export `TxInitiateUnstake`/`InitiateUnstakePayload`, golden
+  test) so the unstake intent reuses the byte-exact wire format. `readyz` keeps postgres hard but the
+  chain **soft** (degraded, not 503) so the read-side serves while the chain is down. Kong routes:
+  `/v1/wallets` + `/v1/staking` authed + X-Creator-Addr self-scoped, `/v1/treasury` public
+  pass-through; entrypoint/compose/CI wired. 85.4% cover (gate 80), gofmt/vet clean. Follow-ups:
+  work34 (build→sign→broadcast send path + `/v1/transactions`), optional RPC reconcile of positions.

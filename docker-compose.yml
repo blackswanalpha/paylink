@@ -922,6 +922,46 @@ services:
       retries: 10
       start_period: 15s
 
+  # work24 — wallet-service (Go/chi). Read-side over on-chain PLN: balances (read-through RPC cache),
+  # transaction history / staking positions/rewards / treasury stats (chain.* event projections), and
+  # UNSIGNED staking intents (A.1 — never holds keys). The chain devnet is `--profile e2e` only;
+  # without it readyz stays green (projections + cached balances still serve) and the chain dep shows
+  # degraded. No redis (no HTTP idempotency store) and no ledger (records no money flows).
+  wallet-service:
+    build:
+      context: .
+      dockerfile: linkmint-backend/wallet-service/Dockerfile
+    environment:
+      WALLET_HTTP_ADDR: ":8102"
+      WALLET_DATABASE_URL: postgres://paylink:paylink@postgres:5432/paylink?sslmode=disable
+      WALLET_LOG_LEVEL: INFO
+      WALLET_CHAIN_RPC_URL: http://paylink-chain:8545/
+      WALLET_CHAIN_ID: paylink-devnet
+      # work15 — index the `chain` topic into the wallet read-side.
+      WALLET_EVENT_CONSUMER_ENABLED: "true"
+      KAFKA_BROKERS: redpanda:9092
+      WALLET_BALANCE_CACHE_TTL_SECONDS: "5"
+      # work18 — OpenTelemetry: export spans to Tempo (no-op until OTEL_EXPORTER_OTLP_ENDPOINT set).
+      OTEL_SERVICE_NAME: wallet-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    ports:
+      - "8102:8102"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "wget -qO- http://localhost:8102/internal/healthz || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
   # work02 — payment lifecycle conductor (Go/chi). Reacts to lVM chain events and reconciles
   # against on-chain truth (read-through RPC + WS). The chain devnet is `--profile e2e` only;
   # without it readyz reports the chain dep down (liveness/healthz stays up). With `--profile e2e`
@@ -997,6 +1037,9 @@ services:
       # work23 — settlement-service (auth required; X-Creator-Addr injected = merchant settlement key).
       # The /settlements/files/ingest endpoint is internal-only and intentionally NOT routed here.
       GATEWAY_SETTLEMENT_SERVICE_URL: http://settlement-service:8101
+      # work24 — wallet-service: /v1/wallets + /v1/staking are auth+self-scoped (X-Creator-Addr
+      # injected); /v1/treasury is public pass-through (no auth).
+      GATEWAY_WALLET_SERVICE_URL: http://wallet-service:8102
       GATEWAY_REDIS_HOST: redis
       GATEWAY_REDIS_PORT: "6379"
       GATEWAY_JWT_ISSUER: linkmint-dev
@@ -1046,6 +1089,8 @@ services:
       escrow-manager:
         condition: service_healthy
       settlement-service:
+        condition: service_healthy
+      wallet-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "kong", "health"]
