@@ -42,8 +42,8 @@ Status: `todo` · `in-progress` · `blocked` · `done`. Stack per ADR-003. Trans
 | 19 | [work19](work/work19.md) / [flow19](flow/flow19.md) | 2.19 Invoice (invoices) | Python/FastAPI | 01 | done |
 | 20 | [work20](work/work20.md) / [flow20](flow/flow20.md) | 2.7 Escrow manager | Go/chi | 01,03 | done |
 | 21 | [work21](work/work21.md) / [flow21](flow/flow21.md) | 2.8 Fee-pricing service | Python/FastAPI | 10 | done |
-| 22 | [work22](work/work22.md) / [flow22](flow/flow22.md) | 2.9 Refund-dispute service | Python/FastAPI | 02,23 | todo |
-| 23 | [work23](work/work23.md) / [flow23](flow/flow23.md) | 2.12 Settlement service | Go/chi | 02,10,16 | todo |
+| 22 | [work22](work/work22.md) / [flow22](flow/flow22.md) | 2.9 Refund-dispute service | Python/FastAPI | 02,23 | done |
+| 23 | [work23](work/work23.md) / [flow23](flow/flow23.md) | 2.12 Settlement service | Go/chi | 02,10,16 | done |
 | 24 | [work24](work/work24.md) / [flow24](flow/flow24.md) | 2.13 Wallet service | Go/chi | (chain RPC) | todo |
 | 34 | [work34](work/work34.md) / [flow34](flow/flow34.md) | 2.13 Token send & payment submission (build→sign→broadcast) | Go/chi + TS | 24, 06 | todo |
 | 25 | [work25](work/work25.md) / [flow25](flow/flow25.md) | 2.16 Fraud-detection service | Python/FastAPI | 02,12 | todo |
@@ -648,3 +648,18 @@ never expands the active item ([scope.md](scope.md)).
   amount cross-check vs chain RPC (mirror payload has no amount); escrow-created-after-settlement
   never auto-funds (needs a reconcile read); dispute resolution = work22 (the CONDITIONS_MET→Refund
   FSM seam is reserved for it).
+- 2026-06-13 — **work22 → done.** Built `linkmint-backend/refund-dispute-service` (Python/FastAPI,
+  port 8100, `refund` schema), cloned from fee-pricing-service (work21). Refund lifecycle
+  (REQUESTED→PROCESSING→COMPLETED, full + partial with a cumulative cap against the original amount)
+  + dispute lifecycle (HMAC provider webhook → evidence window → submit → WON/LOST, EXPIRED via
+  sweeper). Strictly non-custodial (A.1): **rail reversal is instruction-only** (no adapter supports
+  reversal yet — mpesa is STK-push-only, card/crypto/bank are work28–30) via a `RailReversalRegistry`
+  seam; **clawback is a published `refund.clawback.requested` contract** for settlement (work23, not
+  built) — the seam pattern work11 used for the audit sink, so the `02,23` dep is satisfied without
+  work23 existing. Consumes `chain.paylink.verified` into a `verified_paylinks` projection
+  (RedisDedupe + durable DbDedupe). New `refund`/`dispute` domains added to eventbus-go/python
+  (byte-identical, 15 topics) + redpanda-init + catalog.md. Kong pass-through route (`/v1/refunds`,
+  `/v1/disputes`; RS256 self-verify + HMAC webhook in-service, no X-Creator-Addr) + gateway tests +
+  CI job. ruff/black/mypy clean; 104 unit tests, cover 94% (gate 80); A.6 ledger seam OFF (work23 is
+  the canonical writer). Follow-ups: real rail-reversal adapters (work28–30), the settlement-side
+  clawback consumer (work23), and escrow-dispute resolution (the escrow-manager DISPUTED seam).

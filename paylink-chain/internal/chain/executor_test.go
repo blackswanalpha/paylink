@@ -1,12 +1,14 @@
 package chain
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/paylink/paylink-chain/internal/crypto"
+	"github.com/paylink/paylink-chain/internal/events"
 	"github.com/paylink/paylink-chain/internal/state"
 	"github.com/paylink/paylink-chain/internal/types"
 )
@@ -258,6 +260,84 @@ func TestExecuteSubmitValidationAndSettlement(t *testing.T) {
 	// Proof should be used
 	if !s.IsProofUsed(proofHash) {
 		t.Fatal("Proof should be marked as used")
+	}
+}
+
+// TestSettlementEventCarriesPayeeAndAmount verifies the enrichment of the paylink.verified
+// event (work23): its data must carry the PayLink's Receiver (payee) and gross Amount so the
+// off-chain settlement-service can aggregate verified PayLinks into a merchant settlement without
+// a separate lookup. The fields are observability metadata only — never part of consensus.
+func TestSettlementEventCarriesPayeeAndAmount(t *testing.T) {
+	genesis := testGenesis()
+	genesis.RequiredValidations = 3
+	s := state.NewStateDB(genesis)
+
+	bus := events.NewBus(events.DefaultBusConfig())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go bus.Start(ctx)
+	sub := bus.Subscribe()
+	defer bus.Unsubscribe(sub)
+
+	exec := NewExecutor(s, bus)
+
+	merchant := types.HexToAddress("0x0000000000000000000000000000000000000003")
+	receiver := types.HexToAddress("0x0000000000000000000000000000000000000004")
+	plID := crypto.SHA256Hash([]byte("PLK-pay"))
+	now := time.Now().Unix()
+
+	validators := []types.Address{
+		types.HexToAddress("0x0000000000000000000000000000000000000010"),
+		types.HexToAddress("0x0000000000000000000000000000000000000011"),
+		types.HexToAddress("0x0000000000000000000000000000000000000012"),
+	}
+	for _, v := range validators {
+		s.SetBalance(v, 50_000)
+		s.Stake(v, 20_000, now)
+	}
+
+	const grossAmount uint64 = 1500
+	createTx := makeTx(types.TxCreatePayLink, merchant, 0, types.CreatePayLinkPayload{
+		PayLinkID: plID, Receiver: receiver, Amount: grossAmount, Expiry: now + 86400,
+	})
+	if r := exec.ExecuteTx(createTx, now); !r.Success {
+		t.Fatalf("CreatePayLink failed: %s", r.Error)
+	}
+	exec.commitTxEvents()
+
+	proofHash := crypto.SHA256Hash([]byte("proof-pay"))
+	for i, v := range validators {
+		tx := makeTx(types.TxSubmitValidation, v, 0, types.SubmitValidationPayload{
+			PayLinkID: plID, ProofHash: proofHash,
+		})
+		if r := exec.ExecuteTx(tx, now); !r.Success {
+			t.Fatalf("Validation %d failed: %s", i, r.Error)
+		}
+		exec.commitTxEvents()
+	}
+	exec.FlushEvents(7)
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case evt := <-sub.Ch():
+			if evt.Kind != events.EventPayLinkVerified {
+				continue
+			}
+			var d events.PayLinkSettledData
+			if err := json.Unmarshal(evt.Data, &d); err != nil {
+				t.Fatalf("decode settled data: %v", err)
+			}
+			if d.Payee != receiver.Hex() {
+				t.Fatalf("payee = %q, want %q", d.Payee, receiver.Hex())
+			}
+			if d.Amount != grossAmount {
+				t.Fatalf("amount = %d, want %d", d.Amount, grossAmount)
+			}
+			return
+		case <-deadline:
+			t.Fatal("did not observe a paylink.verified event")
+		}
 	}
 }
 

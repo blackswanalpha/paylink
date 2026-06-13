@@ -130,6 +130,14 @@ type PayLinkVotedData struct {
 type PayLinkSettledData struct {
 	ProofHash string `json:"proofHash"`
 	VoteCount uint64 `json:"voteCount"`
+	// Payee is the PayLink Receiver address (hex). It identifies the merchant the settled
+	// PayLink pays out to, so off-chain consumers (settlement-service, work23) can aggregate
+	// verified PayLinks into a per-merchant settlement without a separate lookup. Observability
+	// metadata only — not part of consensus state or block/state hashing.
+	Payee string `json:"payee"`
+	// Amount is the PayLink's gross amount in minor units, mirrored here so settlement can
+	// record gross/net the moment a PayLink verifies (the fee.collected event carries the fee).
+	Amount uint64 `json:"amount"`
 }
 
 type TransferData struct {
