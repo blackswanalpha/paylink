@@ -8,6 +8,8 @@
 #   /v1/paylinks*       -> paylink-service        (auth required)
 #   /v1/payments*       -> payment-orchestrator   (auth required)
 #   /v1/escrows*        -> escrow-manager         (auth required; work20)
+#   /v1/settlements*    -> settlement-service     (auth required; work23)
+#   /v1/payouts*        -> settlement-service     (auth required; work23)
 #   /v1/notifications*  -> notification-service   (auth required; FE work07 inbox)
 #   anything else       -> 404 (LinkMint envelope)
 #
@@ -266,6 +268,98 @@ services:
         strip_path: false
         preserve_host: false
 
+  # refund-dispute-service (work22): refunds + disputes/chargebacks. PASS-THROUGH (RS256 self-verify
+  # in-service). The /v1/disputes/webhooks/{provider} route is HMAC-gated in-service (rail providers
+  # send no JWT), which the pass-through wiring allows — the gateway injects no X-Creator-Addr and
+  # strips no Authorization. The /v1/internal/* surface (if any) is NOT routed here.
+  - name: refund-dispute-service
+    url: ${GATEWAY_REFUND_DISPUTE_SERVICE_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: refund-dispute
+        paths: ["/v1/refunds", "/v1/disputes"]
+        strip_path: false
+        preserve_host: false
+
+  # ── settlement-service (work23) ──────────────────────────────────────────────────────────────
+  # Merchant-scoped settlements + payouts. Authenticated like paylinks/payments/escrows: jwt OR
+  # key-auth, and the post-function injects the trustworthy X-Creator-Addr the service scopes by
+  # (it IS the merchant settlement key = the PayLink Receiver address). The internal rail-file
+  # ingest endpoint (/settlements/files/ingest) is NOT routed here — it is trusted-network only.
+  - name: settlement-service
+    url: ${GATEWAY_SETTLEMENT_SERVICE_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: settlements
+        paths: ["/v1/settlements", "/v1/payouts"]
+        strip_path: false
+        preserve_host: false
+        plugins:
+          - name: jwt
+            config:
+              anonymous: 11111111-1111-1111-1111-111111111111
+              key_claim_name: iss
+              claims_to_verify: ["exp"]
+              uri_param_names: []
+              cookie_names: []
+              run_on_preflight: true
+          - name: key-auth
+            config:
+              anonymous: 11111111-1111-1111-1111-111111111111
+              key_names: ["X-API-Key"]
+              key_in_header: true
+              key_in_query: false
+              key_in_body: false
+              hide_credentials: true
+              run_on_preflight: true
+
+  # ── wallet-service (work24) ──────────────────────────────────────────────────────────────────
+  # Read-side over on-chain PLN. /v1/wallets + /v1/staking are self-scoped: authenticated like
+  # paylinks/payments/escrows (jwt OR key-auth) so the post-function injects the trustworthy
+  # X-Creator-Addr the service authorizes against (a caller reads only their own wallet). The
+  # /staking/intent endpoint returns an UNSIGNED tx (A.1 — no keys). /v1/treasury is PUBLIC: it
+  # carries no auth plugin and is left out of the post-function allow-list (pass-through).
+  - name: wallet-service
+    url: ${GATEWAY_WALLET_SERVICE_URL}
+    retries: 2
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    routes:
+      - name: wallets
+        paths: ["/v1/wallets", "/v1/staking"]
+        strip_path: false
+        preserve_host: false
+        plugins:
+          - name: jwt
+            config:
+              anonymous: 11111111-1111-1111-1111-111111111111
+              key_claim_name: iss
+              claims_to_verify: ["exp"]
+              uri_param_names: []
+              cookie_names: []
+              run_on_preflight: true
+          - name: key-auth
+            config:
+              anonymous: 11111111-1111-1111-1111-111111111111
+              key_names: ["X-API-Key"]
+              key_in_header: true
+              key_in_query: false
+              key_in_body: false
+              hide_credentials: true
+              run_on_preflight: true
+      # Public treasury stats — no auth plugin; pass-through (not in the post-function allow-list).
+      - name: wallet-treasury
+        paths: ["/v1/treasury"]
+        strip_path: false
+        preserve_host: false
+
 consumers:
   # Shared anonymous fallback — selected by the auth plugins when no valid credential is presented.
   - id: 11111111-1111-1111-1111-111111111111
@@ -348,7 +442,7 @@ plugins:
           -- routes (identity/merchant/compliance/admin/audit) self-verify the forwarded bearer token,
           -- so the gateway neither requires a credential nor injects X-Creator-Addr for them; the
           -- catch-all (404) route is likewise skipped.
-          if rn ~= "paylinks" and rn ~= "payments" and rn ~= "notifications" and rn ~= "escrows" then
+          if rn ~= "paylinks" and rn ~= "payments" and rn ~= "notifications" and rn ~= "escrows" and rn ~= "settlements" and rn ~= "wallets" then
             return
           end
 

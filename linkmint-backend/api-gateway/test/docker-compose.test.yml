@@ -65,8 +65,12 @@ services:
       GATEWAY_AUDIT_SERVICE_URL: http://echo-identity:8080
       # work21 — fee-pricing is the same pass-through wiring; point it at the shared echo too.
       GATEWAY_FEE_PRICING_SERVICE_URL: http://echo-identity:8080
+      # work22 — refund-dispute is the same pass-through wiring; share the echo too.
+      GATEWAY_REFUND_DISPUTE_SERVICE_URL: http://echo-identity:8080
       # work20 — escrows are authenticated like payments; the payments echo observes the route.
       GATEWAY_ESCROW_SERVICE_URL: http://echo-payments:8080
+      # work23 — settlements/payouts are authenticated + identity-injected like payments; share the echo.
+      GATEWAY_SETTLEMENT_SERVICE_URL: http://echo-payments:8080
       GATEWAY_REDIS_HOST: redis
       GATEWAY_REDIS_PORT: "6379"
       GATEWAY_JWT_ISSUER: linkmint-dev

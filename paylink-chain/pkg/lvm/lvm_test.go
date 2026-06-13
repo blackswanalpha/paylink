@@ -36,6 +36,47 @@ func TestSubmitValidationWireBytes(t *testing.T) {
 	}
 }
 
+func TestBuildStakeAndUnstakeWireBytes(t *testing.T) {
+	from := HexToAddress("0x0000000000000000000000000000000000000010")
+
+	stake, err := BuildStakeTx(from, 3, 50)
+	if err != nil {
+		t.Fatalf("BuildStakeTx: %v", err)
+	}
+	if stake.Type != TxStake {
+		t.Fatalf("stake type: got %d want %d", stake.Type, TxStake)
+	}
+	if want := `{"amount":50}`; string(stake.Payload) != want {
+		t.Fatalf("stake payload: got %s want %s", stake.Payload, want)
+	}
+	wantStakeSignable := fmt.Sprintf(`{"type":6,"from":"%s","nonce":3,"payload":{"amount":50}}`, from.Hex())
+	if string(stake.SignableBytes()) != wantStakeSignable {
+		t.Fatalf("stake signable: got %s want %s", stake.SignableBytes(), wantStakeSignable)
+	}
+	// The builder leaves the tx UNSIGNED — A.1 / work24 staking intent: no key material attached.
+	if len(stake.Signature) != 0 || len(stake.PubKey) != 0 || stake.Hash != (Hash{}) {
+		t.Fatalf("stake tx must be unsigned: sig=%d pub=%d hash=%s", len(stake.Signature), len(stake.PubKey), stake.Hash.Hex())
+	}
+
+	unstake, err := BuildInitiateUnstakeTx(from, 4, 25)
+	if err != nil {
+		t.Fatalf("BuildInitiateUnstakeTx: %v", err)
+	}
+	if unstake.Type != TxInitiateUnstake {
+		t.Fatalf("unstake type: got %d want %d", unstake.Type, TxInitiateUnstake)
+	}
+	if want := `{"amount":25}`; string(unstake.Payload) != want {
+		t.Fatalf("unstake payload: got %s want %s", unstake.Payload, want)
+	}
+	wantUnstakeSignable := fmt.Sprintf(`{"type":7,"from":"%s","nonce":4,"payload":{"amount":25}}`, from.Hex())
+	if string(unstake.SignableBytes()) != wantUnstakeSignable {
+		t.Fatalf("unstake signable: got %s want %s", unstake.SignableBytes(), wantUnstakeSignable)
+	}
+	if len(unstake.Signature) != 0 || len(unstake.PubKey) != 0 || unstake.Hash != (Hash{}) {
+		t.Fatalf("unstake tx must be unsigned: sig=%d pub=%d hash=%s", len(unstake.Signature), len(unstake.PubKey), unstake.Hash.Hex())
+	}
+}
+
 func TestSignTxMatchesServerFormula(t *testing.T) {
 	key, err := GenerateKey()
 	if err != nil {

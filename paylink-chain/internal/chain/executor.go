@@ -313,6 +313,8 @@ func (e *Executor) executeSubmitValidation(tx *types.Transaction, blockTimestamp
 			WithData(events.PayLinkSettledData{
 				ProofHash: p.ProofHash.Hex(),
 				VoteCount: voteCount,
+				Payee:     pl.Receiver.Hex(),
+				Amount:    pl.Amount,
 			}))
 
 		// Phase 2: Collect and distribute fees via PLN inflation

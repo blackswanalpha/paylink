@@ -30,9 +30,10 @@ else is on the wire.
 ## Topics
 
 `paylink` · `payment` · `chain` · `merchant` · `compliance` · `identity` · `notification` ·
-`escrow` · `settlement` · `fee` · `pricing` · `fx` · `invoice` (13 domain topics; 1 partition / 1
-replica locally). The `pricing`/`fx`/`invoice` topics carry the fee-pricing (work21) and
-invoice-subscription (work19) events: per the model below, the topic is the logical name's first
+`escrow` · `settlement` · `fee` · `pricing` · `fx` · `invoice` · `refund` · `dispute` (15 domain
+topics; 1 partition / 1 replica locally). The `pricing`/`fx`/`invoice` topics carry the fee-pricing
+(work21) and invoice-subscription (work19) events; `refund`/`dispute` carry refund-dispute-service
+(work22). Per the model below, the topic is the logical name's first
 dot-segment, so `pricing.fee_quote.issued` → `pricing`, `fx.rate.updated` → `fx`,
 `invoice.platform_fee.issued` / `invoice.*` → `invoice`. (`fee` is reserved for future fee-domain
 events whose name starts `fee.`.)
@@ -77,8 +78,10 @@ events whose name starts `fee.`.)
 | `escrow.created` / `escrow.released` / `escrow.refunded` / `escrow.disputed` | escrow | escrow-manager | notification-service | 2 |
 | `settlement.batch_created` / `settlement.completed` / `payout.*` | settlement | settlement-service | reporting, reconciliation | 2 |
 | `pricing.fee_quote.issued` / `fx.rate.updated` / `invoice.platform_fee.issued` | pricing / fx / invoice | fee-pricing-service | invoice-subscription | 2 |
+| `refund.requested` / `refund.approved` / `refund.rejected` / `refund.reversal.instructed` / `refund.processing` / `refund.completed` / `refund.failed` / `refund.clawback.requested` | refund | refund-dispute-service | settlement-service (clawback), notification-service | 2 |
+| `dispute.opened` / `dispute.evidence_added` / `dispute.submitted` / `dispute.won` / `dispute.lost` / `dispute.expired` | dispute | refund-dispute-service | notification-service | 2 |
 
-> **Phase-2 rows** (escrow / settlement / fee / refund / most compliance) are the **contract ahead
+> **Phase-2 rows** (escrow / settlement / fee / refund / dispute / most compliance) are the **contract ahead
 > of the service**: the producing service is not yet built (see [backlog.md](backlog.md)), but the
 > name/topic are fixed here so a future implementer and its consumers agree up front.
 

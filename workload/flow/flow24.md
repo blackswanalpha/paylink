@@ -3,7 +3,7 @@
 **Work item:** [work24](../work/work24.md) · **Goal recap:** read-side over on-chain PLN; unsigned-tx intents; no custody.
 
 ## Pre-flight
-- [ ] Read [work24](../work/work24.md), [rules.md](../rules.md) (A.1). Confirm chain RPC reachable. Set `in-progress`.
+- [x] Read [work24](../work/work24.md), [rules.md](../rules.md) (A.1). Confirm chain RPC reachable. Set `in-progress`.
 
 ## Steps (skeleton — refine on start)
 | # | Step | Agent / Skill |
@@ -17,4 +17,4 @@
 | 7 | Verify read-side reflects an on-chain stake | `/verify` |
 
 ## Done
-- [ ] [work24](../work/work24.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).
+- [x] [work24](../work/work24.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).

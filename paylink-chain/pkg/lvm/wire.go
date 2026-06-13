@@ -37,6 +37,10 @@ type CreatePayLinkPayload = types.CreatePayLinkPayload
 // StakePayload is the TxStake payload (used by the devnet auto-stake path).
 type StakePayload = types.StakePayload
 
+// InitiateUnstakePayload is the TxInitiateUnstake payload (used by the wallet-service staking
+// intent path, work24).
+type InitiateUnstakePayload = types.InitiateUnstakePayload
+
 // Address is a 20-byte account address (marshals as a 0x-hex JSON string).
 type Address = types.Address
 
@@ -48,6 +52,7 @@ const (
 	TxCreatePayLink    = types.TxCreatePayLink
 	TxSubmitValidation = types.TxSubmitValidation
 	TxStake            = types.TxStake
+	TxInitiateUnstake  = types.TxInitiateUnstake
 )
 
 // ── Hex / byte helpers (thin re-exports) ──
@@ -99,6 +104,14 @@ func BuildSubmitValidationTx(from Address, nonce uint64, plID, proofHash Hash) (
 // bootstrap so the validator becomes active). Sign it with SignTx before broadcasting.
 func BuildStakeTx(from Address, nonce uint64, amount uint64) (*Transaction, error) {
 	return buildTx(TxStake, from, nonce, StakePayload{Amount: amount})
+}
+
+// BuildInitiateUnstakeTx assembles an unsigned TxInitiateUnstake that begins withdrawing the given
+// amount from the sender's stake (subject to the chain's withdrawal cooldown). The wallet-service
+// (work24) returns this UNSIGNED to a client for a "/staking/intent" with action="unstake"; the
+// client signs it with SignTx before broadcasting (A.1 — the service never holds keys).
+func BuildInitiateUnstakeTx(from Address, nonce uint64, amount uint64) (*Transaction, error) {
+	return buildTx(TxInitiateUnstake, from, nonce, InitiateUnstakePayload{Amount: amount})
 }
 
 // BuildCreatePayLinkTx assembles an unsigned TxCreatePayLink. Primarily for clients/tests that need

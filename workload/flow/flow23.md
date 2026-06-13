@@ -3,7 +3,7 @@
 **Work item:** [work23](../work/work23.md) · **Goal recap:** aggregate → settlement → T+1 payout + file ingest, ledger-backed.
 
 ## Pre-flight
-- [ ] Read [work23](../work/work23.md), [rules.md](../rules.md) (A.1, A.6). Confirm work02 + work10 + work16 `done`. Set `in-progress`.
+- [x] Read [work23](../work/work23.md), [rules.md](../rules.md) (A.1, A.6). Confirm work02 + work10 + work16 `done`. Set `in-progress`.
 
 ## Steps (skeleton — refine on start)
 | # | Step | Agent / Skill |
@@ -17,4 +17,4 @@
 | 7 | Verify settlement → payout → file match | `/verify` |
 
 ## Done
-- [ ] [work23](../work/work23.md) criteria met; DoD complete; mark `done` in [backlog.md](../backlog.md).
+- [x] [work23](../work/work23.md) criteria met; DoD complete; marked `done` in [backlog.md](../backlog.md).
